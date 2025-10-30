@@ -1,0 +1,25 @@
+# FastAPI framework
+fastapi==0.116.1
+uvicorn[standard]==0.35.0
+python-multipart==0.0.20
+
+# Azure Cosmos DB
+azure-identity==1.23.1
+azure-storage-blob==12.26.0
+azure-cosmos==4.9.0
+
+# Microsoft Agent Framework
+agent-framework
+
+# Authentication & Security
+# python-jose[cryptography]==3.3.0
+# passlib[bcrypt]==1.7.4
+
+# HTTP client
+httpx==0.28.1
+aiohttp==3.12.15
+
+# Configuration
+pydantic==2.11.7
+pydantic-settings==2.10.1
+python-dotenv==1.1.1
