@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Brain, TrendingUp, AlertTriangle, CheckCircle, BarChart3, Play, Clock, FileText, Expand, Copy, Check, FileCheck, FileX, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,18 +11,36 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AgentWorkflow from "@/components/AgentWorkflow";
 import ChatInterface from "@/components/ChatInterface";
 import Header from "@/components/Header";
+import { AnalysisProcessingWorkflow } from "@/components/AnalysisProcessingWorkflow";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import * as analysisApi from "@/lib/api/analysis";
+import * as opportunitiesApi from "@/lib/api/opportunities";
+import * as documentsApi from "@/lib/api/documents";
+import type { Analysis as AnalysisType, Opportunity, ProcessingStatistics } from "@/lib/api/types";
 
 const Analysis = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const opportunityId = searchParams.get("opid") || "";
+  
+  // Loading and error states
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  
+  // Data states
+  const [opportunity, setOpportunity] = useState<Opportunity | null>(null);
+  const [analyses, setAnalyses] = useState<AnalysisType[]>([]);
+  const [processingStats, setProcessingStats] = useState<ProcessingStatistics | null>(null);
+  
+  // UI states
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string>("run-1");
+  const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [analysisRunName, setAnalysisRunName] = useState("");
   const [investmentHypothesis, setInvestmentHypothesis] = useState("");
@@ -30,51 +48,84 @@ const Analysis = () => {
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
+  const [isCreatingAnalysis, setIsCreatingAnalysis] = useState(false);
   const [completedAgents, setCompletedAgents] = useState<string[]>([
     'financial', 'risk', 'market', 'compliance', 'challenger', 'supporter', 'summary'
   ]);
 
-  const opportunityName = "TechCo Series B Investment";
+  // Fetch data on mount
+  useEffect(() => {
+    const fetchData = async () => {
+      if (!opportunityId) {
+        setError("No opportunity ID provided");
+        setIsLoading(false);
+        return;
+      }
 
-  // Document processing status
-  const [documents] = useState({
-    total: 5,
+      try {
+        setIsLoading(true);
+        setError(null);
+
+        // Fetch opportunity details, analyses, and processing statistics in parallel
+        const [opportunityData, analysesData, statsData] = await Promise.all([
+          opportunitiesApi.getOpportunity(opportunityId),
+          analysisApi.getAnalysesByOpportunity(opportunityId),
+          documentsApi.getProcessingStatistics(opportunityId).catch(() => null), // Gracefully handle if no documents
+        ]);
+
+        setOpportunity(opportunityData);
+        setAnalyses(analysesData);
+        setProcessingStats(statsData);
+
+        // Set the first analysis as selected by default
+        if (analysesData.length > 0 && !selectedRunId) {
+          setSelectedRunId(analysesData[0].id);
+        }
+      } catch (err: any) {
+        console.error("Error fetching data:", err);
+        setError(err.message || "Failed to load analysis data");
+        toast({
+          title: "Error",
+          description: "Failed to load analysis data. Please try again.",
+          variant: "destructive",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [opportunityId]);
+
+  const opportunityName = opportunity?.display_name || "Investment Opportunity";
+
+  // Document processing status - use API data if available, otherwise show empty state
+  const documents = processingStats ? {
+    total: processingStats.total_documents,
+    pending: processingStats.pending,
+    processing: processingStats.in_progress,
+    completed: processingStats.completed,
+    error: processingStats.failed,
+  } : {
+    total: 0,
     pending: 0,
     processing: 0,
-    completed: 5,
+    completed: 0,
     error: 0,
-  });
+  };
 
   const allDocumentsProcessed = documents.completed === documents.total && documents.total > 0;
   const hasDocuments = documents.total > 0;
   const processingProgress = hasDocuments ? Math.round((documents.completed / documents.total) * 100) : 0;
 
-  const analysisRuns = [
-    {
-      id: "run-1",
-      name: "TechCo Series B Analysis",
-      date: "2025-10-28",
-      time: "14:30",
-      status: "complete",
-      overallScore: 79,
-    },
-    {
-      id: "run-2",
-      name: "FinanceApp Due Diligence",
-      date: "2025-10-25",
-      time: "09:15",
-      status: "complete",
-      overallScore: 82,
-    },
-    {
-      id: "run-3",
-      name: "HealthTech Startup Review",
-      date: "2025-10-22",
-      time: "16:45",
-      status: "complete",
-      overallScore: 71,
-    },
-  ];
+  // Transform API analyses to the format expected by the UI
+  const analysisRuns = analyses.map(analysis => ({
+    id: analysis.id,
+    name: analysis.name,
+    date: new Date(analysis.created_at).toISOString().split('T')[0],
+    time: new Date(analysis.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    status: analysis.status,
+  }));
 
   const insights = {
     financial: [
@@ -685,32 +736,65 @@ This investment opportunity scores **79/100**, representing a **solid investment
     setIsDialogOpen(true);
   };
 
-  const handleConfirmRun = () => {
-    // TODO: Implement the logic to create a new analysis run
-    console.log("Creating new analysis run:", analysisRunName);
-    console.log("Investment hypothesis:", investmentHypothesis);
-    setIsDialogOpen(false);
-    setAnalysisRunName("");
-    setInvestmentHypothesis("");
-    setIsAnalysisRunning(true);
-    setCompletedAgents([]); // Clear all agent results
+  const handleConfirmRun = async () => {
+    if (!opportunityId || !analysisRunName.trim()) {
+      return;
+    }
+
+    try {
+      setIsCreatingAnalysis(true);
+      
+      // Create the analysis via API
+      const newAnalysis = await analysisApi.createAnalysis({
+        name: analysisRunName,
+        opportunity_id: opportunityId,
+        investment_hypothesis: investmentHypothesis || undefined,
+        tags: [],
+      });
+
+      // Add the new analysis to the list
+      setAnalyses([newAnalysis, ...analyses]);
+      setSelectedRunId(newAnalysis.id);
+
+      toast({
+        title: "Analysis Created",
+        description: `"${analysisRunName}" has been created successfully.`,
+      });
+
+      // Close dialog and reset form
+      setIsDialogOpen(false);
+      setAnalysisRunName("");
+      setInvestmentHypothesis("");
+
+      // Start the analysis
+      await analysisApi.startAnalysis(opportunityId, newAnalysis.id);
+      
+      // Update the analysis status in the list
+      setAnalyses(prev => prev.map(a => 
+        a.id === newAnalysis.id ? { ...a, status: 'in_progress' } : a
+      ));
+
+      setIsAnalysisRunning(true);
+      
+    } catch (err: any) {
+      console.error("Error creating analysis:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to create analysis. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingAnalysis(false);
+    }
+  };
+
+  const handleAnalysisWorkflowComplete = (status: string, data: any) => {
+    setIsAnalysisRunning(false);
     
-    // Simulate agents completing one by one
-    const agentOrder = ['financial', 'risk', 'market', 'compliance', 'supporter', 'challenger', 'summary'];
-    const agentDelay = 1500; // 1.5 seconds between each agent
-    
-    agentOrder.forEach((agentId, index) => {
-      setTimeout(() => {
-        setCompletedAgents(prev => [...prev, agentId]);
-        
-        // Mark analysis as complete when last agent finishes
-        if (index === agentOrder.length - 1) {
-          setTimeout(() => {
-            setIsAnalysisRunning(false);
-          }, 500);
-        }
-      }, agentDelay * (index + 1));
-    });
+    // Update the analysis status when complete
+    setAnalyses(prev => prev.map(a => 
+      a.id === selectedRunId ? { ...a, status: status as AnalysisType['status'] } : a
+    ));
   };
 
   const handleCancelRun = () => {
@@ -747,6 +831,57 @@ This investment opportunity scores **79/100**, representing a **solid investment
 
   const selectedAgent = agents.find(agent => agent.id === selectedAgentDetail);
 
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex items-center justify-center h-96">
+            <div className="text-center">
+              <Loader2 className="h-8 w-8 animate-spin mx-auto mb-4 text-primary" />
+              <p className="text-muted-foreground">Loading analysis data...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error state
+  if (error || !opportunityId) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Button variant="ghost" onClick={() => navigate("/")} className="mb-3">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+          <Card className="p-8">
+            <div className="flex flex-col items-center justify-center text-center space-y-3">
+              <div className="p-3 bg-destructive/10 rounded-full">
+                <AlertCircle className="h-8 w-8 text-destructive" />
+              </div>
+              <div>
+                <h3 className="text-lg font-semibold text-foreground mb-1">
+                  {error || "No Opportunity Selected"}
+                </h3>
+                <p className="text-sm text-muted-foreground max-w-md">
+                  {error ? "Please try again and check that the API is running." : "Please select an opportunity from the dashboard."}
+                </p>
+              </div>
+              <Button onClick={() => navigate("/")} className="gap-2">
+                <ArrowLeft className="h-4 w-4" />
+                Go to Dashboard
+              </Button>
+            </div>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -772,87 +907,129 @@ This investment opportunity scores **79/100**, representing a **solid investment
           </div>
         </div>
 
-        {/* Document Processing Status */}
-        <Card className="p-4 mb-6">
-          <div className="flex items-center justify-between mb-3">
-            <div className="flex items-center gap-3">
-              <h3 className="text-sm font-semibold text-foreground">
-                Documents
-              </h3>
-              {hasDocuments && (
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-xs h-5">
-                    {documents.total} Total
-                  </Badge>
-                  {allDocumentsProcessed ? (
-                    <Badge className="bg-green-500 text-xs h-5">
-                      <CheckCircle className="h-2.5 w-2.5 mr-1" />
-                      All Processed
-                    </Badge>
-                  ) : (
-                    <Badge variant="secondary" className="text-xs h-5">
-                      <Clock className="h-2.5 w-2.5 mr-1" />
-                      {documents.completed}/{documents.total} Processed
-                    </Badge>
-                  )}
+        {/* Two Column Grid: Analysis Run Selector and Documents */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
+          {/* Analysis Run Selector - Left Column */}
+          {analysisRuns.length > 0 && (
+            <Card className="p-4">
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold text-foreground">
+                    Analysis Run
+                  </h3>
+                  <Button 
+                    size="sm"
+                    onClick={handleNewAnalysisRun}
+                    disabled={isAnalysisRunning || isCreatingAnalysis}
+                    className="h-7 text-xs"
+                  >
+                    <Play className="mr-1 h-3 w-3" />
+                    New Run
+                  </Button>
                 </div>
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => navigate("/process-documents")}
-              className="h-8"
-            >
-              <FileText className="mr-1.5 h-3.5 w-3.5" />
-              <span className="text-xs">Manage</span>
-            </Button>
-          </div>
-
-          {!hasDocuments ? (
-            <Alert className="py-2">
-              <FileX className="h-3.5 w-3.5" />
-              <AlertTitle className="text-sm mb-0">No Documents</AlertTitle>
-              <AlertDescription className="text-xs">
-                Upload documents to begin analysis.
-              </AlertDescription>
-            </Alert>
-          ) : (
-            <>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="flex-1">
-                  <Progress value={processingProgress} className="h-1.5" />
-                </div>
-                <span className="text-xs font-medium text-muted-foreground min-w-[3rem] text-right">
-                  {processingProgress}%
-                </span>
+                <Select value={selectedRunId} onValueChange={setSelectedRunId} disabled={isAnalysisRunning || isCreatingAnalysis}>
+                  <SelectTrigger className="w-full h-9">
+                    <SelectValue placeholder="Select an analysis run" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {analysisRuns.map((run) => (
+                      <SelectItem key={run.id} value={run.id}>
+                        <div className="flex items-center justify-between w-full">
+                          <span className="font-medium text-sm">{run.name}</span>
+                          <span className="ml-4 text-xs text-muted-foreground">
+                            {run.date} - {run.time} - {run.status.charAt(0).toUpperCase() + run.status.slice(1)}
+                          </span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
-
-              <div className="grid grid-cols-5 gap-2">
-                <div className="text-center py-1.5 px-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded">
-                  <div className="text-lg font-bold text-green-700 dark:text-green-400">{documents.completed}</div>
-                  <div className="text-[10px] text-green-600 dark:text-green-500">Done</div>
-                </div>
-                <div className="text-center py-1.5 px-2 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded">
-                  <div className="text-lg font-bold text-blue-700 dark:text-blue-400">{documents.processing}</div>
-                  <div className="text-[10px] text-blue-600 dark:text-blue-500">Active</div>
-                </div>
-                <div className="text-center py-1.5 px-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                  <div className="text-lg font-bold text-yellow-700 dark:text-yellow-400">{documents.pending}</div>
-                  <div className="text-[10px] text-yellow-600 dark:text-yellow-500">Queue</div>
-                </div>
-                <div className="text-center py-1.5 px-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded">
-                  <div className="text-lg font-bold text-red-700 dark:text-red-400">{documents.error}</div>
-                  <div className="text-[10px] text-red-600 dark:text-red-500">Error</div>
-                </div>
-                <div className="text-center py-1.5 px-2 bg-muted/50 border border-border rounded">
-                  <div className="text-lg font-bold text-foreground">{documents.total}</div>
-                  <div className="text-[10px] text-muted-foreground">Total</div>
-                </div>
-              </div>
-            </>
+            </Card>
           )}
-        </Card>
+
+          {/* Document Processing Status - Right Column */}
+          <Card className="p-4">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-semibold text-foreground">
+                  Documents
+                </h3>
+                {hasDocuments && (
+                  <div className="flex items-center gap-1.5">
+                    <Badge variant="outline" className="text-xs h-5">
+                      {documents.total} Total
+                    </Badge>
+                    {allDocumentsProcessed ? (
+                      <Badge className="bg-green-500 text-xs h-5">
+                        <CheckCircle className="h-2.5 w-2.5 mr-1" />
+                        Done
+                      </Badge>
+                    ) : (
+                      <Badge variant="secondary" className="text-xs h-5">
+                        <Clock className="h-2.5 w-2.5 mr-1" />
+                        {documents.completed}/{documents.total}
+                      </Badge>
+                    )}
+                  </div>
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => navigate(`/process-documents?opportunityId=${opportunityId}`)}
+                className="h-7 text-xs"
+              >
+                <FileText className="mr-1 h-3 w-3" />
+                Manage
+              </Button>
+            </div>
+
+            {!hasDocuments ? (
+              <Alert className="py-2">
+                <FileX className="h-3.5 w-3.5" />
+                <AlertTitle className="text-sm mb-0">No Documents</AlertTitle>
+                <AlertDescription className="text-xs">
+                  Upload documents to begin analysis.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 mb-2">
+                  <div className="flex-1">
+                    <Progress value={processingProgress} className="h-1.5" />
+                  </div>
+                  <span className="text-xs font-medium text-muted-foreground min-w-[3rem] text-right">
+                    {processingProgress}%
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-5 gap-1.5">
+                  <div className="text-center py-1.5 px-1 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded">
+                    <div className="text-base font-bold text-green-700 dark:text-green-400">{documents.completed}</div>
+                    <div className="text-[9px] text-green-600 dark:text-green-500">Done</div>
+                  </div>
+                  <div className="text-center py-1.5 px-1 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded">
+                    <div className="text-base font-bold text-blue-700 dark:text-blue-400">{documents.processing}</div>
+                    <div className="text-[9px] text-blue-600 dark:text-blue-500">Active</div>
+                  </div>
+                  <div className="text-center py-1.5 px-1 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded">
+                    <div className="text-base font-bold text-yellow-700 dark:text-yellow-400">{documents.pending}</div>
+                    <div className="text-[9px] text-yellow-600 dark:text-yellow-500">Queue</div>
+                  </div>
+                  <div className="text-center py-1.5 px-1 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded">
+                    <div className="text-base font-bold text-red-700 dark:text-red-400">{documents.error}</div>
+                    <div className="text-[9px] text-red-600 dark:text-red-500">Error</div>
+                  </div>
+                  <div className="text-center py-1.5 px-1 bg-muted/50 border border-border rounded">
+                    <div className="text-base font-bold text-foreground">{documents.total}</div>
+                    <div className="text-[9px] text-muted-foreground">Total</div>
+                  </div>
+                </div>
+              </>
+            )}
+          </Card>
+        </div>
 
         {!allDocumentsProcessed ? (
           <Card className="p-8">
@@ -869,7 +1046,7 @@ This investment opportunity scores **79/100**, representing a **solid investment
                 </p>
               </div>
               <Button
-                onClick={() => navigate("/process-documents")}
+                onClick={() => navigate(`/process-documents?opportunityId=${opportunityId}`)}
                 className="gap-2"
                 size="sm"
               >
@@ -880,239 +1057,52 @@ This investment opportunity scores **79/100**, representing a **solid investment
           </Card>
         ) : (
           <>
-            <Card className="p-6 mb-6">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex-1">
-              <label className="text-sm font-medium text-foreground mb-2 block">
-                Select Analysis Run
-              </label>
-              <Select value={selectedRunId} onValueChange={setSelectedRunId}>
-                <SelectTrigger className="w-full">
-                  <SelectValue placeholder="Select an analysis run" />
-                </SelectTrigger>
-                <SelectContent>
-                  {analysisRuns.map((run) => (
-                    <SelectItem key={run.id} value={run.id}>
-                      <div className="flex items-center justify-between w-full">
-                        <span className="font-medium">{run.name}</span>
-                        <span className="ml-4 text-xs text-muted-foreground">
-                          {run.date} • Score: {run.overallScore}
-                        </span>
-                      </div>
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="flex-shrink-0">
-              <Button 
-                className="bg-primary hover:bg-primary/90 mt-6"
-                onClick={handleNewAnalysisRun}
-              >
-                <Play className="mr-2 h-4 w-4" />
-                New Analysis Run
-              </Button>
-            </div>
-          </div>
-        </Card>
-
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-          <div className={isAnalysisRunning ? "lg:col-span-1" : "lg:col-span-2"}>
-            <Card className="p-6 h-full">
-              <h2 className="text-xl font-semibold mb-4 text-foreground">
-                AI Agent Results
-              </h2>
-              
-              {isAnalysisRunning && completedAgents.length === 0 && (
-                <div className="flex flex-col items-center justify-center py-12 text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mb-4"></div>
-                  <p className="text-muted-foreground">Initializing AI agents...</p>
+            {analysisRuns.length === 0 ? (
+              <Card className="p-8 mb-6">
+                <div className="flex flex-col items-center justify-center text-center space-y-3">
+                  <div className="p-3 bg-muted rounded-full">
+                    <Brain className="h-8 w-8 text-muted-foreground" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-foreground mb-1">
+                      No Analysis Runs Yet
+                    </h3>
+                    <p className="text-sm text-muted-foreground max-w-md">
+                      Create your first AI-powered investment analysis run to get started.
+                    </p>
+                  </div>
+                  <Button
+                    onClick={handleNewAnalysisRun}
+                    className="gap-2"
+                  >
+                    <Play className="h-4 w-4" />
+                    New Analysis Run
+                  </Button>
                 </div>
-              )}
-              
-              {/* Core Analysis Agents */}
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-3">Core Analysis</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {agents.filter(agent => ['financial', 'risk', 'market', 'compliance'].includes(agent.id) && completedAgents.includes(agent.id)).map((agent) => {
-                    const Icon = agent.icon;
-                    return (
-                      <div
-                        key={agent.id}
-                        className="p-3 border border-border rounded-lg hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-4 duration-500"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-start space-x-2 flex-1 min-w-0">
-                            <div className={`${agent.color} p-1.5 rounded-lg flex-shrink-0`}>
-                              <Icon className="h-3 w-3 text-white" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-xs text-foreground leading-tight">
-                                {agent.name}
-                              </h3>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 ml-2">
-                            <div className="text-lg font-bold text-foreground leading-none">
-                              {agent.score}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mb-2">
-                          <ul className="space-y-0.5">
-                            {agent.keyInsights.map((insight, index) => (
-                              <li key={index} className="text-xs text-muted-foreground flex items-start leading-tight">
-                                <span className="mr-1 flex-shrink-0">•</span>
-                                <span className="flex-1">{insight}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleExpandAgent(agent.id)}
-                            className="text-xs h-6 px-2"
-                          >
-                            <Expand className="mr-1 h-2.5 w-2.5" />
-                            View Report
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
+              </Card>
+            ) : (
+              <>
+                {/* Analysis with Real-Time Events */}
+                {selectedRunId && (
+                  <AnalysisProcessingWorkflow
+                    opportunityId={opportunityId}
+                    analysisId={selectedRunId}
+                    analysisStatus={analyses.find(a => a.id === selectedRunId)?.status}
+                    onComplete={(status, data) => {
+                      handleAnalysisWorkflowComplete(status, data);
+                    }}
+                  />
+                )}
 
-              {/* Perspective Agents */}
-              <div className="mb-4">
-                <h3 className="text-sm font-medium text-muted-foreground mb-3">Investment Perspectives</h3>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {agents.filter(agent => ['supporter', 'challenger'].includes(agent.id) && completedAgents.includes(agent.id)).map((agent) => {
-                    const Icon = agent.icon;
-                    return (
-                      <div
-                        key={agent.id}
-                        className="p-3 border border-border rounded-lg hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-4 duration-500"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-start space-x-2 flex-1 min-w-0">
-                            <div className={`${agent.color} p-1.5 rounded-lg flex-shrink-0`}>
-                              <Icon className="h-3 w-3 text-white" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-xs text-foreground leading-tight">
-                                {agent.name}
-                              </h3>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 ml-2">
-                            <div className="text-lg font-bold text-foreground leading-none">
-                              {agent.score}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mb-2">
-                          <ul className="space-y-0.5">
-                            {agent.keyInsights.map((insight, index) => (
-                              <li key={index} className="text-xs text-muted-foreground flex items-start leading-tight">
-                                <span className="mr-1 flex-shrink-0">•</span>
-                                <span className="flex-1">{insight}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleExpandAgent(agent.id)}
-                            className="text-xs h-6 px-2"
-                          >
-                            <Expand className="mr-1 h-2.5 w-2.5" />
-                            View Report
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Summary Agent */}
-              <div>
-                <h3 className="text-sm font-medium text-muted-foreground mb-3">Overall Recommendation</h3>
-                <div className="grid grid-cols-1 gap-3">
-                  {agents.filter(agent => agent.id === 'summary' && completedAgents.includes(agent.id)).map((agent) => {
-                    const Icon = agent.icon;
-                    return (
-                      <div
-                        key={agent.id}
-                        className="p-3 border border-border rounded-lg hover:bg-accent transition-colors animate-in fade-in slide-in-from-bottom-4 duration-500"
-                      >
-                        <div className="flex items-start justify-between mb-2">
-                          <div className="flex items-start space-x-2 flex-1 min-w-0">
-                            <div className={`${agent.color} p-1.5 rounded-lg flex-shrink-0`}>
-                              <Icon className="h-3 w-3 text-white" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <h3 className="font-semibold text-xs text-foreground leading-tight">
-                                {agent.name}
-                              </h3>
-                            </div>
-                          </div>
-                          <div className="text-right flex-shrink-0 ml-2">
-                            <div className="text-lg font-bold text-foreground leading-none">
-                              {agent.score}
-                            </div>
-                          </div>
-                        </div>
-                        <div className="mb-2">
-                          <ul className="space-y-0.5">
-                            {agent.keyInsights.map((insight, index) => (
-                              <li key={index} className="text-xs text-muted-foreground flex items-start leading-tight">
-                                <span className="mr-1 flex-shrink-0">•</span>
-                                <span className="flex-1">{insight}</span>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                        <div className="flex justify-end">
-                          <Button 
-                            variant="ghost" 
-                            size="sm"
-                            onClick={() => handleExpandAgent(agent.id)}
-                            className="text-xs h-6 px-2"
-                          >
-                            <Expand className="mr-1 h-2.5 w-2.5" />
-                            View Report
-                          </Button>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            </Card>
-          </div>
-
-          <div className={isAnalysisRunning ? "lg:col-span-2" : "lg:col-span-1"}>
-            <Card className="p-6 h-full flex flex-col">
-              <h2 className="text-xl font-semibold mb-4 text-foreground">
-                AI Agent Workflow
-              </h2>
-              <div className="flex-1 h-full overflow-auto">
-                <AgentWorkflow />
-              </div>
-            </Card>
-          </div>
-        </div>
-
-        {/* What If Analysis Section */}
-        <div className="mb-6">
-          <ChatInterface />
-        </div>
+                {/* What If Analysis Section */}
+                {/* Only show if status of workflow is completed */}
+                {analyses.find(a => a.id === selectedRunId)?.status === 'completed' && (
+                  <div className="mt-6 mb-6">
+                    <ChatInterface />
+                  </div>
+                )}
+              </>
+            )}
           </>
         )}
       </div>
@@ -1154,14 +1144,22 @@ This investment opportunity scores **79/100**, representing a **solid investment
             <Button 
               variant="outline" 
               onClick={handleCancelRun}
+              disabled={isCreatingAnalysis}
             >
               Cancel
             </Button>
             <Button 
               onClick={handleConfirmRun}
-              disabled={!analysisRunName.trim()}
+              disabled={!analysisRunName.trim() || isCreatingAnalysis}
             >
-              Confirm Run
+              {isCreatingAnalysis ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Creating...
+                </>
+              ) : (
+                "Confirm Run"
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>

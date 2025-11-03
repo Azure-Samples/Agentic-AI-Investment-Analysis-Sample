@@ -1,4 +1,4 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect } from 'react';
 import ReactFlow, {
   Node,
   Edge,
@@ -9,63 +9,112 @@ import ReactFlow, {
   useEdgesState,
 } from 'reactflow';
 import 'reactflow/dist/style.css';
-import { BarChart3, AlertTriangle, TrendingUp, CheckCircle, Brain, ThumbsUp, ThumbsDown } from 'lucide-react';
-import AgentWorkflowNode from './AgentWorkflowNode';
-import AgentWorkflowGroupNode from './AgentWorkflowGroupNode';
+import { BarChart3, AlertTriangle, TrendingUp, CheckCircle, Brain, ThumbsUp, ThumbsDown, HardDriveDownload, Gavel } from 'lucide-react';
+import AgentWorkflowNode from '@/components/AgentWorkflowNode';
+import AgentWorkflowGroupNode from '@/components/AgentWorkflowGroupNode';
 
-const AgentWorkflow = () => {
+interface AgentStatus {
+  status: 'pending' | 'running' | 'completed' | 'failed';
+  name?: string;
+  displayName?: string;
+  icon?: any;
+  color?: string;
+  score?: number;
+  insights?: string[];
+  result?: any;
+}
+
+interface AgentWorkflowProps {
+  agentStatus?: Record<string, AgentStatus>;
+  workflowStatus?: 'idle' | 'running' | 'completed' | 'failed';
+}
+
+const AgentWorkflow = ({ agentStatus, workflowStatus }: AgentWorkflowProps) => {
+  // Helper function to map agent status to node status
+  const mapAgentStatusToNodeStatus = (status: string): string => {
+    switch (status) {
+      case 'running':
+        return 'processing';
+      case 'completed':
+        return 'complete';
+      case 'failed':
+        return 'failed';
+      case 'pending':
+      default:
+        return 'pending';
+    }
+  };
+
+  // Helper function to get agent icon
+  const getAgentIcon = (agentName: string) => {
+    switch (agentName) {
+      case 'financial': return BarChart3;
+      case 'risk': return AlertTriangle;
+      case 'market': return TrendingUp;
+      case 'compliance': return Gavel;
+      case 'supporter': return ThumbsUp;
+      case 'challenger': return ThumbsDown;
+      case 'summary': return Brain;
+      default: return CheckCircle;
+    }
+  };
+
   const agentData = [
     {
       id: "start",
-      name: "Document Upload",
-      status: "complete",
-      icon: Brain,
-      position: { x: 250, y: 0 },
+      name: "Prepare Data",
+      status: workflowStatus === 'idle' ? 'pending' : 'complete',
+      icon: HardDriveDownload,
+      position: { x: 550, y: -400 },
     },
     {
       id: "financial",
       name: "Financial Analysis",
-      status: "complete",
+      status: agentStatus?.financial ? mapAgentStatusToNodeStatus(agentStatus.financial.status) : 'pending',
       icon: BarChart3,
-      score: 78,
-      position: { x: 50, y: 200 },
+      score: agentStatus?.financial?.score,
+      position: { x: 50, y: -250 },
     },
     {
       id: "risk",
       name: "Risk Assessment",
-      status: "complete",
+      status: agentStatus?.risk ? mapAgentStatusToNodeStatus(agentStatus.risk.status) : 'pending',
       icon: AlertTriangle,
-      score: 65,
-      position: { x: 205, y: 200 },
+      score: agentStatus?.risk?.score,
+      position: { x: 200, y: -100 },
     },
     {
       id: "market",
       name: "Market Analysis",
-      status: "complete",
+      status: agentStatus?.market ? mapAgentStatusToNodeStatus(agentStatus.market.status) : 'pending',
       icon: TrendingUp,
-      score: 82,
-      position: { x: 360, y: 200 },
+      score: agentStatus?.market?.score,
+      position: { x: 350, y: 50 },
     },
     {
       id: "compliance",
       name: "Compliance Check",
-      status: "complete",
-      icon: CheckCircle,
-      score: 90,
-      position: { x: 515, y: 200 },
+      status: agentStatus?.compliance ? mapAgentStatusToNodeStatus(agentStatus.compliance.status) : 'pending',
+      icon: Gavel,
+      score: agentStatus?.compliance?.score,
+      position: { x: 500, y: 200 },
     },
     {
       id: "debate-group",
-      name: "Debate Analysis",
-      status: "complete",
+      name: "Investment Debate",
+      status: (agentStatus?.supporter?.status === 'completed' && agentStatus?.challenger?.status === 'completed') 
+        ? 'complete' 
+        : (agentStatus?.supporter?.status === 'running' || agentStatus?.challenger?.status === 'running')
+        ? 'processing'
+        : 'pending',
       icon: Brain,
-      position: { x: 200, y: 400 },
+      position: { x: 50, y: 350 },
       isGroup: true,
     },
     {
       id: "supporter",
       name: "Supporter Agent",
-      status: "complete",
+      status: agentStatus?.supporter ? mapAgentStatusToNodeStatus(agentStatus.supporter.status) : 'pending',
       icon: ThumbsUp,
       position: { x: 20, y: 40 },
       parentNode: "debate-group",
@@ -73,17 +122,17 @@ const AgentWorkflow = () => {
     {
       id: "challenger",
       name: "Challenger Agent",
-      status: "complete",
+      status: agentStatus?.challenger ? mapAgentStatusToNodeStatus(agentStatus.challenger.status) : 'pending',
       icon: ThumbsDown,
-      position: { x: 190, y: 40 },
+      position: { x: 340, y: 40 },
       parentNode: "debate-group",
     },
     {
       id: "final",
       name: "Final Report",
-      status: "complete",
+      status: agentStatus?.summary ? mapAgentStatusToNodeStatus(agentStatus.summary.status) : 'pending',
       icon: Brain,
-      position: { x: 280, y: 600 },
+      position: { x: 190, y: 600 },
     },
   ];
 
@@ -92,7 +141,7 @@ const AgentWorkflow = () => {
     groupNode: AgentWorkflowGroupNode,
   }), []);
 
-  const initialNodes: Node[] = useMemo(() => 
+  const createNodesFromAgentData = () => 
     agentData.map((agent) => {
       const isStart = agent.id === 'start';
       const isFinal = agent.id === 'final';
@@ -110,9 +159,9 @@ const AgentWorkflow = () => {
             background: 'hsl(var(--accent) / 0.3)',
             border: '2px dashed hsl(var(--border))',
             borderRadius: '12px',
-            width: 360,
-            height: 140,
-            padding: 20,
+            width: 560,
+            height: 160,
+            padding: 15,
           },
         };
       }
@@ -122,7 +171,7 @@ const AgentWorkflow = () => {
         type: 'agentNode',
         position: agent.position,
         parentNode: agent.parentNode,
-        extent: agent.parentNode ? 'parent' : undefined,
+        extent: agent.parentNode ? ('parent' as const) : undefined,
         data: {
           name: agent.name,
           status: agent.status,
@@ -135,10 +184,13 @@ const AgentWorkflow = () => {
           background: 'hsl(var(--card))',
           border: '1px solid hsl(var(--border))',
           borderRadius: '8px',
-          width: isStart || isFinal ? 200 : 150,
+          width: isStart || isFinal ? 280 : 200,
+          height: 'auto',
         },
       };
-    }), []);
+    });
+
+  const initialNodes: Node[] = useMemo(() => createNodesFromAgentData(), []);
 
   const initialEdges: Edge[] = useMemo(() => [
     { id: 'e-start-financial', source: 'start', target: 'financial', animated: true, style: { stroke: 'hsl(var(--primary))' } },
@@ -160,6 +212,12 @@ const AgentWorkflow = () => {
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
 
+  // Update nodes whenever agentStatus or workflowStatus changes
+  useEffect(() => {
+    const updatedNodes = createNodesFromAgentData();
+    setNodes(updatedNodes);
+  }, [agentStatus, workflowStatus]);
+
   return (
     <div className="w-full h-full bg-card border border-border rounded-lg">
       <ReactFlow
@@ -170,7 +228,7 @@ const AgentWorkflow = () => {
         nodeTypes={nodeTypes}
         fitView
         fitViewOptions={{ padding: 0.2 }}
-        minZoom={0.1}
+        minZoom={0.2}
         maxZoom={1.5}
         attributionPosition="bottom-left"
       >

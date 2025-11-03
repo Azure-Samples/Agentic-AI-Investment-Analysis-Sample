@@ -11,6 +11,7 @@ import uuid
 # from app.database.connection import get_db
 from app.models import User
 
+
 # Security setup
 # pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 # security = HTTPBearer()
