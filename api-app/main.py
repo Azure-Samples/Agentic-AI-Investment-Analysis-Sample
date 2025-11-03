@@ -9,7 +9,7 @@ import uvicorn
 from app.core.config import settings
 from app.utils.logging import setup_logger
 from app.dependencies import initialize_all, close_all, get_cosmos_client
-from app.routers import workflows, catalog, executions
+from app.routers import opportunity, analysis
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -38,9 +38,8 @@ def initialize_api_application() -> FastAPI:
     )
 
     # Include routers
-    app.include_router(workflows.router, prefix="/api")
-    app.include_router(catalog.router, prefix="/api")
-    app.include_router(executions.router, prefix="/api")
+    app.include_router(opportunity.router, prefix="/api")
+    app.include_router(analysis.router, prefix="/api")
 
     # Global exception handler
     @app.exception_handler(Exception)
@@ -81,22 +80,6 @@ def initialize_api_application() -> FastAPI:
             health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
             health_status["status"] = "unhealthy"
         
-        # # Redis health
-        # try:
-        #     redis_client = redis.from_url(settings.REDIS_URL)
-        #     redis_client.ping()
-        #     health_status["checks"]["redis"] = {"status": "healthy"}
-        # except Exception as e:
-        #     health_status["checks"]["redis"] = {"status": "unhealthy", "error": str(e)}
-        #     health_status["status"] = "unhealthy"
-        
-        # # System metrics
-        # health_status["system"] = {
-        #     "cpu_percent": psutil.cpu_percent(),
-        #     "memory_percent": psutil.virtual_memory().percent,
-        #     "disk_percent": psutil.disk_usage('/').percent
-        # }
-        
         # Response time
         health_status["response_time_ms"] = round((time.time() - start_time) * 1000, 2)
         
@@ -116,7 +99,6 @@ def initialize_api_application() -> FastAPI:
 setup_logger()
 
 app: FastAPI = initialize_api_application()
-
 
 if __name__ == "__main__":
     uvicorn.run("main:app", 

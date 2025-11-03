@@ -12,7 +12,7 @@ class UserRepository(BaseRepository):
     
     async def get_by_email(self, email: str) -> Optional[User]:
         """Get user by email"""
-        user_data = await self.get_by_id(email, email)  # email is both id and partition key
+        user_data = await self.get_opportunity_by_id(email, email)  # email is both id and partition key
         return User(**user_data) if user_data else None
     
     async def create_user(self, user: User) -> User:

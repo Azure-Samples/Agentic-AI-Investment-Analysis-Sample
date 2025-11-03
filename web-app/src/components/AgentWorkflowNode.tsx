@@ -6,7 +6,6 @@ interface AgentWorkflowNodeData {
   name: string;
   status: string;
   icon: LucideIcon;
-  score?: number;
   isStart?: boolean;
   isFinal?: boolean;
   description?: string;
@@ -23,13 +22,15 @@ const AgentWorkflowNode = ({ data }: NodeProps<AgentWorkflowNodeData>) => {
         return 'bg-blue-500';
       case 'pending':
         return 'bg-gray-400';
+      case 'failed':
+        return 'bg-red-500';
       default:
         return 'bg-yellow-500';
     }
   };
   
   return (
-    <div className="px-4 py-3 relative min-w-[200px]">
+    <div className="text-center items-center px-4 py-3 relative min-h-20 min-w-[200px] bg-white border border-gray-400 rounded-lg shadow-sm">
       <Handle type="target" position={Position.Top} />
       
       {/* Status indicator */}
@@ -44,15 +45,9 @@ const AgentWorkflowNode = ({ data }: NodeProps<AgentWorkflowNodeData>) => {
       </div>
       
       <div className="flex items-center gap-2 mb-1">
-        <Icon className="h-6 w-6 text-primary text-xl" />
-        <div className="font-semibold text-base text-foreground">{data.name}</div>
+        <Icon className="h-10 w-10 text-primary text-xl font-bold" />
+        <div className="font-bold text-foreground text-2xl">{data.name}</div>
       </div>
-      
-      {data.description && (
-        <div className="text-xs text-muted-foreground ml-8">
-          {data.description}
-        </div>
-      )}
       
       <Handle type="source" position={Position.Bottom} />
     </div>

@@ -1,10 +1,10 @@
 from typing import List, Optional, Dict, Any
-from azure.cosmos.container import ContainerProxy
-from azure.cosmos.exceptions import CosmosResourceNotFoundError
-from app.models import User, Workflow, WorkflowExecution, AgentDefinition, ExecutorDefinition
-from app.database.cosmos import CosmosDBClient
 from datetime import datetime, timezone
 import uuid
+
+from azure.cosmos.container import ContainerProxy
+from azure.cosmos.exceptions import CosmosResourceNotFoundError
+from app.database.cosmos import CosmosDBClient
 
 class BaseRepository:
     """Base repository class for common Cosmos DB operations"""
@@ -43,7 +43,7 @@ class BaseRepository:
         # Get existing item
         existing_item = await self.get_by_id(item_id, partition_key)
         if not existing_item:
-            raise ValueError(f"Item with id {item_id} not found")
+            raise ValueError(f"Item with id {item_id}, partition key {partition_key} not found")
         
         # Merge updates
         existing_item.update(updates)

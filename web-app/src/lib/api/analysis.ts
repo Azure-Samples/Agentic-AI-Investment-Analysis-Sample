@@ -1,0 +1,72 @@
+/**
+ * API client for Analysis endpoints
+ */
+
+import apiClient from './client';
+import type {
+  Analysis,
+  AnalysisCreateRequest,
+  AnalysisUpdateRequest,
+  AnalysisCompleteRequest,
+  AnalysisFailRequest,
+} from './types';
+
+/**
+ * Get all analyses for the current user
+ */
+export async function getAnalyses(isActive: boolean = true): Promise<Analysis[]> {
+  return apiClient.get<Analysis[]>('/analysis/', { is_active: isActive });
+}
+
+/**
+ * Get all analyses for a specific opportunity
+ */
+export async function getAnalysesByOpportunity(opportunityId: string): Promise<Analysis[]> {
+  return apiClient.get<Analysis[]>(`/analysis/opportunity/${opportunityId}`);
+}
+
+/**
+ * Get a specific analysis by ID
+ */
+export async function getAnalysis(opportunityId: string, analysisId: string): Promise<Analysis> {
+  return apiClient.get<Analysis>(`/analysis/${opportunityId}/${analysisId}`);
+}
+
+/**
+ * Create a new analysis
+ */
+export async function createAnalysis(data: AnalysisCreateRequest): Promise<Analysis> {
+  return apiClient.post<Analysis>('/analysis/', data);
+}
+
+/**
+ * Update an existing analysis
+ */
+export async function updateAnalysis(
+  opportunityId: string,
+  analysisId: string,
+  data: AnalysisUpdateRequest
+): Promise<Analysis> {
+  return apiClient.put<Analysis>(`/analysis/${opportunityId}/${analysisId}`, data);
+}
+
+/**
+ * Start an analysis run
+ */
+export async function startAnalysis(opportunityId: string, analysisId: string): Promise<Analysis> {
+  return apiClient.post<Analysis>(`/analysis/${opportunityId}/${analysisId}/start`, {});
+}
+
+/**
+ * Delete an analysis
+ * @param opportunityId - The ID of the opportunity
+ * @param analysisId - The ID of the analysis to delete
+ * @param softDelete - If true, use soft delete (mark as inactive). If false, permanently delete
+ */
+export async function deleteAnalysis(
+  opportunityId: string,
+  analysisId: string,
+  softDelete: boolean = true
+): Promise<void> {
+  return apiClient.delete<void>(`/analysis/${opportunityId}/${analysisId}`, { soft_delete: softDelete });
+}

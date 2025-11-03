@@ -57,7 +57,8 @@ def setup_logger():
     logging.getLogger('httpcore').setLevel(logging.WARNING)
     logging.getLogger('agent_framework').setLevel(logging.INFO)
     logging.getLogger('httpx').setLevel(logging.WARNING)
-        
+    logging.getLogger('urllib3.connectionpool').setLevel(logging.INFO)
+    
     # # Configure OpenTelemetry to use Azure Monitor with the 
     # # APPLICATIONINSIGHTS_CONNECTION_STRING environment variable.
     # if APPLICATIONINSIGHTS_CONNECTION_STRING:
