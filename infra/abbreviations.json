@@ -1,0 +1,12 @@
+{
+  "documentDBDatabaseAccounts": "cosmos-",
+  "storageStorageAccounts": "st",
+  "appServicePlans": "plan-",
+  "appServiceWebApps": "app-",
+  "appServiceFunctionApps": "func-",
+  "cognitiveServicesAccounts": "cog-",
+  "keyVaultVaults": "kv-",
+  "containerRegistryRegistries": "cr",
+  "containerAppsEnvironments": "cae-",
+  "containerApps": "ca-"
+}

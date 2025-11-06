@@ -1,0 +1,33 @@
+name: agentic-ai-investment-analysis
+metadata:
+  template: agentic-ai-investment-analysis@0.0.1
+
+services:
+  api:
+    project: ./api-app
+    language: py
+    host: appservice
+
+  web:
+    project: ./web-app
+    language: js
+    host: staticwebapp
+
+hooks:
+  postprovision:
+    windows:
+      shell: pwsh
+      run: |
+        # Get Cosmos DB connection details and set them as environment variables
+        $cosmosAccountName = azd env get-values --output json | ConvertFrom-Json | Select-Object -ExpandProperty COSMOS_DB_ACCOUNT_NAME
+        $rgName = azd env get-values --output json | ConvertFrom-Json | Select-Object -ExpandProperty AZURE_RESOURCE_GROUP
+        $cosmosKey = az cosmosdb keys list --name $cosmosAccountName --resource-group $rgName --query primaryMasterKey -o tsv
+        azd env set COSMOS_DB_KEY $cosmosKey
+    posix:
+      shell: sh
+      run: |
+        # Get Cosmos DB connection details and set them as environment variables
+        cosmosAccountName=$(azd env get-values --output json | jq -r .COSMOS_DB_ACCOUNT_NAME)
+        rgName=$(azd env get-values --output json | jq -r .AZURE_RESOURCE_GROUP)
+        cosmosKey=$(az cosmosdb keys list --name $cosmosAccountName --resource-group $rgName --query primaryMasterKey -o tsv)
+        azd env set COSMOS_DB_KEY $cosmosKey
