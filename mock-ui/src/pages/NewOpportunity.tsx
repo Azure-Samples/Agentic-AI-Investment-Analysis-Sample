@@ -28,6 +28,7 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
+import { apiClient } from "@/lib/api-client";
 
 interface FileWithTags {
   file: File;
@@ -41,6 +42,7 @@ const NewOpportunity = () => {
   const [isCreating, setIsCreating] = useState(false);
   const [files, setFiles] = useState<FileWithTags[]>([]);
   const [newTag, setNewTag] = useState("");
+  const [createdOpportunityId, setCreatedOpportunityId] = useState<string | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -107,7 +109,7 @@ const NewOpportunity = () => {
     );
   };
 
-  const handleStepOneSubmit = (e: React.FormEvent) => {
+  const handleStepOneSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validation
@@ -120,15 +122,44 @@ const NewOpportunity = () => {
       return;
     }
 
-    // Move to step 2
-    setCurrentStep(2);
-    toast({
-      title: "Step 1 completed",
-      description: "Now upload documents for AI analysis",
-    });
+    setIsCreating(true);
+
+    try {
+      // Create opportunity via API
+      const opportunity = await apiClient.createOpportunity({
+        name: formData.name.toLowerCase().replace(/\s+/g, '-'),
+        display_name: formData.name,
+        description: formData.description,
+        settings: {
+          company: formData.company,
+          stage: formData.stage,
+          amount: formData.amount,
+          date: formData.date,
+          industry: formData.industry,
+          notes: formData.notes,
+        },
+        is_active: true,
+      });
+
+      setCreatedOpportunityId(opportunity.id);
+      setCurrentStep(2);
+      toast({
+        title: "Opportunity created",
+        description: "Now upload documents for AI analysis",
+      });
+    } catch (error) {
+      console.error("Failed to create opportunity:", error);
+      toast({
+        title: "Error creating opportunity",
+        description: error instanceof Error ? error.message : "Failed to create opportunity",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
-  const handleFinalSubmit = () => {
+  const handleFinalSubmit = async () => {
     if (files.length === 0) {
       toast({
         title: "No documents uploaded",
@@ -138,17 +169,39 @@ const NewOpportunity = () => {
       return;
     }
 
+    if (!createdOpportunityId) {
+      toast({
+        title: "Error",
+        description: "Opportunity ID not found. Please go back and create the opportunity again.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsCreating(true);
 
-    // Simulate opportunity creation and AI processing
-    setTimeout(() => {
-      setIsCreating(false);
+    try {
+      // Upload all documents
+      const allTags = [...new Set(files.flatMap(f => f.tags))];
+      const fileObjects = files.map(f => f.file);
+      
+      await apiClient.uploadDocuments(createdOpportunityId, fileObjects, allTags);
+
       toast({
         title: "Opportunity created successfully",
-        description: "AI analysis has been initiated on uploaded documents",
+        description: "Documents uploaded. AI analysis will begin shortly.",
       });
       navigate("/");
-    }, 2000);
+    } catch (error) {
+      console.error("Failed to upload documents:", error);
+      toast({
+        title: "Error uploading documents",
+        description: error instanceof Error ? error.message : "Failed to upload documents",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreating(false);
+    }
   };
 
   return (

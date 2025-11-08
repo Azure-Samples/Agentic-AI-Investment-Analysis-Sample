@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Plus,
@@ -10,12 +10,15 @@ import {
   ArrowRight,
   Search,
   Pencil,
+  Loader2,
 } from "lucide-react";
 import Header from "@/components/Header";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { useToast } from "@/hooks/use-toast";
+import { apiClient, type Opportunity as ApiOpportunity } from "@/lib/api-client";
 
 interface Opportunity {
   id: string;
@@ -32,47 +35,51 @@ interface Opportunity {
 
 const Index = () => {
   const navigate = useNavigate();
+  const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Mock data for existing opportunities
-  const opportunities: Opportunity[] = [
-    {
-      id: "1",
-      name: "SaaS Platform Expansion",
-      company: "TechCo Solutions",
-      stage: "Series B",
-      amount: "$15M",
-      date: "2025-10-15",
-      score: 79,
-      status: "completed",
-      documentsCount: 12,
-      description: "Enterprise SaaS platform for project management",
-    },
-    {
-      id: "2",
-      name: "Green Energy Initiative",
-      company: "EcoPower Inc",
-      stage: "Series A",
-      amount: "$8M",
-      date: "2025-10-20",
-      score: 85,
-      status: "reviewing",
-      documentsCount: 8,
-      description: "Renewable energy solutions for commercial buildings",
-    },
-    {
-      id: "3",
-      name: "Healthcare AI Platform",
-      company: "MediTech AI",
-      stage: "Seed",
-      amount: "$3.5M",
-      date: "2025-10-25",
-      score: 72,
-      status: "active",
-      documentsCount: 6,
-      description: "AI-powered diagnostic assistance platform",
-    },
-  ];
+  // Fetch opportunities from API
+  useEffect(() => {
+    const fetchOpportunities = async () => {
+      try {
+        setIsLoading(true);
+        const data = await apiClient.getOpportunities();
+        
+        // Transform API data to match UI expectations
+        const transformedData: Opportunity[] = data.map((opp) => {
+          // Extract metadata from settings if available
+          const settings = opp.settings as Record<string, unknown> || {};
+          return {
+            id: opp.id,
+            name: opp.display_name,
+            company: (settings.company as string) || "Unknown Company",
+            stage: (settings.stage as string) || "N/A",
+            amount: (settings.amount as string) || "$0",
+            date: opp.created_at,
+            score: (settings.score as number) || 0,
+            status: opp.is_active ? "active" : "completed",
+            documentsCount: (settings.documentsCount as number) || 0,
+            description: opp.description,
+          };
+        });
+        
+        setOpportunities(transformedData);
+      } catch (error) {
+        console.error("Failed to fetch opportunities:", error);
+        toast({
+          variant: "destructive",
+          title: "Error loading opportunities",
+          description: error instanceof Error ? error.message : "Failed to load opportunities",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchOpportunities();
+  }, [toast]);
 
   const filteredOpportunities = opportunities.filter(
     (opp) =>
@@ -124,8 +131,15 @@ const Index = () => {
           </Button>
         </div>
 
-        {/* Summary Stats */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
+        {/* Loading State */}
+        {isLoading ? (
+          <div className="flex justify-center items-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        ) : (
+          <>
+            {/* Summary Stats */}
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
           <Card className="p-6">
             <div className="flex items-center justify-between mb-2">
               <h3 className="text-sm font-medium text-muted-foreground">
@@ -296,7 +310,7 @@ const Index = () => {
         </div>
 
         {/* Empty State */}
-        {opportunities.length === 0 && (
+        {opportunities.length === 0 && !isLoading && (
           <Card className="p-12 text-center">
             <Building2 className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
             <h3 className="text-xl font-semibold mb-2 text-foreground">
@@ -310,6 +324,8 @@ const Index = () => {
               Create New Opportunity
             </Button>
           </Card>
+        )}
+        </>
         )}
       </div>
     </div>
