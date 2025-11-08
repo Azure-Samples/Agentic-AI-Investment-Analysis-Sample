@@ -36,9 +36,9 @@ class OpportunityService:
         opportunity_id: str,
         owner_id: Optional[str] = None
     ) -> Optional[Opportunity]:
-        """Get a single opportunity by ID"""
+        """Get a single opportunity by ID (owner_id parameter kept for backwards compatibility but not used)"""
         try:
-            opportunity = await self.opportunity_repo.get_opportunity_by_id(opportunity_id, owner_id)
+            opportunity = await self.opportunity_repo.get_opportunity_by_id(opportunity_id)
             if opportunity:
                 logger.info(f"Retrieved opportunity {opportunity_id}")
             else:

@@ -156,7 +156,7 @@ async def get_opportunity(
 ):
     """Get a single opportunity by ID"""
     try:
-        opportunity = await opportunity_service.get_opportunity_by_id(opportunity_id, owner_id=current_user.email)
+        opportunity = await opportunity_service.get_opportunity_by_id(opportunity_id)
         
         if not opportunity:
             raise HTTPException(

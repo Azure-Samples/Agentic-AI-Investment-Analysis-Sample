@@ -30,12 +30,16 @@ class OpportunityRepository(BaseRepository):
     
     async def get_opportunity_by_id(self, opportunity_id: str, owner_id: Optional[str] = None) -> Optional[Opportunity]:
         """Get a single opportunity by ID"""
-        item = await self.get_by_id(opportunity_id, owner_id)
+        # Query by ID without partition key to allow cross-owner access
+        query = "SELECT * FROM c WHERE c.id = @opportunity_id"
+        parameters = [{"name": "@opportunity_id", "value": opportunity_id}]
         
-        if not item:
+        opportunities_data = await self.query(query, parameters)
+        
+        if not opportunities_data:
             return None
         
-        opportunity = Opportunity(**item)
+        opportunity = Opportunity(**opportunities_data[0])
         
         return opportunity
     
