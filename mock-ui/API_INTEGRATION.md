@@ -24,6 +24,7 @@ The mock UI has been connected to the backend API. Here's what was implemented:
 - **Index.tsx**: Now fetches opportunities from the API instead of using mock data
 - **NewOpportunity.tsx**: Creates opportunities via API and uploads documents
 - **Analysis.tsx**: Fetches opportunity details, documents, and analyses from API; creates new analysis runs
+- **ProcessDocuments.tsx**: Fetches opportunities and documents from API; triggers document processing workflow
 
 ### 5. Environment Variables (`.env.local`)
 - `VITE_API_URL`: Backend API URL (defaults to `http://localhost:8084`)
@@ -50,6 +51,7 @@ The backend API should be running with the following endpoints:
 - `DELETE /api/opportunity/opportunities/{id}` - Delete an opportunity
 - `POST /api/opportunity/opportunities/{id}/documents/upload` - Upload documents
 - `GET /api/opportunity/opportunities/{id}/documents` - Get opportunity documents
+- `POST /api/opportunity/opportunities/{id}/documents/process` - Process documents with AI agents
 - `GET /api/analysis` - List all analyses
 - `GET /api/analysis/opportunity/{id}` - Get analyses for an opportunity
 - `POST /api/analysis` - Create a new analysis
@@ -74,8 +76,10 @@ To fully integrate the mock UI with the API:
 1. ✅ Update the Index page to fetch opportunities from API
 2. ✅ Update the NewOpportunity page to create opportunities and upload documents
 3. ✅ Update the Analysis page to fetch and display analysis data
-4. Update the ProcessDocuments page (if needed) to work with real document data
-5. Implement real-time updates using Server-Sent Events (SSE) for analysis progress
-6. Add authentication if required by the API
-7. Handle pagination for large datasets
-8. Add proper error boundaries and retry logic
+4. ✅ Update the ProcessDocuments page to work with real document data
+5. Implement real-time updates using Server-Sent Events (SSE) for document processing and analysis progress
+6. Update the Upload page (if needed) to handle file uploads
+7. Add authentication if required by the API
+8. Handle pagination for large datasets
+9. Add proper error boundaries and retry logic
+10. Implement WebSocket connections for real-time workflow updates

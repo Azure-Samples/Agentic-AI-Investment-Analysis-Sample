@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { FileText, Play, CheckCircle2, Clock, AlertCircle, Building2, ChevronRight } from "lucide-react";
+import { useState, useEffect } from "react";
+import { FileText, Play, CheckCircle2, Clock, AlertCircle, Building2, ChevronRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { apiClient, type Opportunity as ApiOpportunity, type Document as ApiDocument } from "@/lib/api-client";
 
 export type ProcessingStatus = "pending" | "processing" | "completed" | "error";
 
@@ -42,171 +43,113 @@ export interface Opportunity {
 const ProcessDocuments = () => {
   const { toast } = useToast();
   
-  // Sample opportunities data
-  const [opportunities] = useState<Opportunity[]>([
-    {
-      id: "opp-1",
-      name: "Series B Funding Round",
-      company: "TechCorp Inc.",
-      sector: "Technology",
-      documentCount: 5,
-      pendingCount: 3,
-      completedCount: 2,
-    },
-    {
-      id: "opp-2",
-      name: "Growth Capital Investment",
-      company: "GreenEnergy Solutions",
-      sector: "Clean Energy",
-      documentCount: 4,
-      pendingCount: 2,
-      completedCount: 2,
-    },
-    {
-      id: "opp-3",
-      name: "Acquisition Opportunity",
-      company: "HealthTech Innovations",
-      sector: "Healthcare",
-      documentCount: 6,
-      pendingCount: 4,
-      completedCount: 2,
-    },
-  ]);
-
-  // All documents with opportunity association
-  const [allDocuments, setAllDocuments] = useState<Document[]>([
-    {
-      id: "doc-1",
-      name: "Financial_Statement_Q4_2024.pdf",
-      size: "2.4 MB",
-      uploadDate: "2024-10-28",
-      status: "pending",
-      opportunityId: "opp-1",
-    },
-    {
-      id: "doc-2",
-      name: "Market_Analysis_Report.docx",
-      size: "1.8 MB",
-      uploadDate: "2024-10-28",
-      status: "pending",
-      opportunityId: "opp-1",
-    },
-    {
-      id: "doc-3",
-      name: "Investment_Proposal.pdf",
-      size: "3.2 MB",
-      uploadDate: "2024-10-27",
-      status: "completed",
-      progress: 100,
-      opportunityId: "opp-1",
-    },
-    {
-      id: "doc-4",
-      name: "Risk_Assessment_Data.xlsx",
-      size: "856 KB",
-      uploadDate: "2024-10-27",
-      status: "pending",
-      opportunityId: "opp-1",
-    },
-    {
-      id: "doc-5",
-      name: "Company_Profile.pdf",
-      size: "1.2 MB",
-      uploadDate: "2024-10-26",
-      status: "completed",
-      progress: 100,
-      opportunityId: "opp-1",
-    },
-    {
-      id: "doc-6",
-      name: "Environmental_Impact_Study.pdf",
-      size: "3.8 MB",
-      uploadDate: "2024-10-25",
-      status: "pending",
-      opportunityId: "opp-2",
-    },
-    {
-      id: "doc-7",
-      name: "Financial_Projections_2025.xlsx",
-      size: "1.5 MB",
-      uploadDate: "2024-10-25",
-      status: "pending",
-      opportunityId: "opp-2",
-    },
-    {
-      id: "doc-8",
-      name: "Technology_Assessment.pdf",
-      size: "2.1 MB",
-      uploadDate: "2024-10-24",
-      status: "completed",
-      progress: 100,
-      opportunityId: "opp-2",
-    },
-    {
-      id: "doc-9",
-      name: "Executive_Summary.pdf",
-      size: "950 KB",
-      uploadDate: "2024-10-24",
-      status: "completed",
-      progress: 100,
-      opportunityId: "opp-2",
-    },
-    {
-      id: "doc-10",
-      name: "Clinical_Trial_Results.pdf",
-      size: "4.2 MB",
-      uploadDate: "2024-10-23",
-      status: "pending",
-      opportunityId: "opp-3",
-    },
-    {
-      id: "doc-11",
-      name: "FDA_Compliance_Report.pdf",
-      size: "2.9 MB",
-      uploadDate: "2024-10-23",
-      status: "pending",
-      opportunityId: "opp-3",
-    },
-    {
-      id: "doc-12",
-      name: "Market_Research_Healthcare.docx",
-      size: "1.7 MB",
-      uploadDate: "2024-10-22",
-      status: "pending",
-      opportunityId: "opp-3",
-    },
-    {
-      id: "doc-13",
-      name: "IP_Portfolio_Analysis.pdf",
-      size: "3.1 MB",
-      uploadDate: "2024-10-22",
-      status: "pending",
-      opportunityId: "opp-3",
-    },
-    {
-      id: "doc-14",
-      name: "Financial_Statements_2024.pdf",
-      size: "2.5 MB",
-      uploadDate: "2024-10-21",
-      status: "completed",
-      progress: 100,
-      opportunityId: "opp-3",
-    },
-    {
-      id: "doc-15",
-      name: "Management_Team_Bios.pdf",
-      size: "890 KB",
-      uploadDate: "2024-10-21",
-      status: "completed",
-      progress: 100,
-      opportunityId: "opp-3",
-    },
-  ]);
+  // State for API data
+  const [opportunities, setOpportunities] = useState<Opportunity[]>([]);
+  const [allDocuments, setAllDocuments] = useState<Document[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
   const [selectedOpportunity, setSelectedOpportunity] = useState<string | null>(null);
   const [selectedDocuments, setSelectedDocuments] = useState<Set<string>>(new Set());
   const [isProcessingDialogOpen, setIsProcessingDialogOpen] = useState(false);
   const [currentProcessingDoc, setCurrentProcessingDoc] = useState<Document | null>(null);
+
+  // Fetch opportunities and documents from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Fetch all opportunities
+        const oppsData = await apiClient.getOpportunities();
+        
+        // Fetch documents for each opportunity
+        const opportunitiesWithDocs = await Promise.all(
+          oppsData.map(async (opp) => {
+            try {
+              const docs = await apiClient.getOpportunityDocuments(opp.id);
+              const settings = opp.settings as Record<string, unknown> || {};
+              
+              // Transform documents to UI format
+              const transformedDocs: Document[] = docs.map(doc => ({
+                id: doc.id,
+                name: doc.name,
+                size: formatFileSize(doc.size),
+                uploadDate: new Date(doc.uploaded_at).toISOString().split('T')[0],
+                status: doc.processing_status as ProcessingStatus,
+                progress: doc.processing_progress,
+                opportunityId: opp.id,
+              }));
+              
+              // Calculate document counts
+              const pendingCount = docs.filter(d => d.processing_status === 'pending').length;
+              const completedCount = docs.filter(d => d.processing_status === 'completed').length;
+              
+              return {
+                id: opp.id,
+                name: opp.display_name,
+                company: (settings.company as string) || "Unknown Company",
+                sector: (settings.industry as string) || "Unknown Sector",
+                documentCount: docs.length,
+                pendingCount,
+                completedCount,
+              };
+            } catch (error) {
+              console.error(`Failed to fetch documents for opportunity ${opp.id}:`, error);
+              return null;
+            }
+          })
+        );
+        
+        // Filter out null values and set opportunities
+        const validOpportunities = opportunitiesWithDocs.filter((opp): opp is Opportunity => opp !== null);
+        setOpportunities(validOpportunities);
+        
+        // Fetch and combine all documents
+        const allDocsArrays = await Promise.all(
+          oppsData.map(async (opp) => {
+            try {
+              const docs = await apiClient.getOpportunityDocuments(opp.id);
+              return docs.map(doc => ({
+                id: doc.id,
+                name: doc.name,
+                size: formatFileSize(doc.size),
+                uploadDate: new Date(doc.uploaded_at).toISOString().split('T')[0],
+                status: doc.processing_status as ProcessingStatus,
+                progress: doc.processing_progress,
+                opportunityId: opp.id,
+              }));
+            } catch (error) {
+              console.error(`Failed to fetch documents for opportunity ${opp.id}:`, error);
+              return [];
+            }
+          })
+        );
+        
+        setAllDocuments(allDocsArrays.flat());
+        
+      } catch (error) {
+        console.error("Failed to fetch opportunities and documents:", error);
+        toast({
+          variant: "destructive",
+          title: "Error loading data",
+          description: error instanceof Error ? error.message : "Failed to load opportunities and documents",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [toast]);
+
+  // Helper function to format file size
+  const formatFileSize = (bytes: number): string => {
+    if (bytes === 0) return '0 Bytes';
+    const k = 1024;
+    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+    const i = Math.floor(Math.log(bytes) / Math.log(k));
+    return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+  };
 
   // Filter documents by selected opportunity
   const documents = selectedOpportunity
@@ -234,7 +177,7 @@ const ProcessDocuments = () => {
     setSelectedDocuments(new Set());
   };
 
-  const handleProcessDocuments = () => {
+  const handleProcessDocuments = async () => {
     if (selectedDocuments.size === 0) {
       toast({
         title: "No documents selected",
@@ -244,9 +187,36 @@ const ProcessDocuments = () => {
       return;
     }
 
-    // Start processing
-    setIsProcessingDialogOpen(true);
-    processNextDocument();
+    if (!selectedOpportunity) {
+      toast({
+        title: "No opportunity selected",
+        description: "Please select an opportunity first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Start processing via API
+      const documentIds = Array.from(selectedDocuments);
+      await apiClient.processDocuments(selectedOpportunity, documentIds);
+
+      // Show processing dialog
+      setIsProcessingDialogOpen(true);
+      processNextDocument();
+
+      toast({
+        title: "Processing started",
+        description: "Documents are being processed by AI agents",
+      });
+    } catch (error) {
+      console.error("Failed to start document processing:", error);
+      toast({
+        variant: "destructive",
+        title: "Error starting processing",
+        description: error instanceof Error ? error.message : "Failed to start document processing",
+      });
+    }
   };
 
   const processNextDocument = () => {
@@ -362,6 +332,20 @@ const ProcessDocuments = () => {
 
   const pendingCount = documents.filter(doc => doc.status === "pending").length;
   const completedCount = documents.filter(doc => doc.status === "completed").length;
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-center items-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background">
