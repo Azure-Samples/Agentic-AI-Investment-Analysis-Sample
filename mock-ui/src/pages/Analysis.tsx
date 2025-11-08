@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { ArrowLeft, Brain, TrendingUp, AlertTriangle, CheckCircle, BarChart3, Play, Clock, FileText, Expand, Copy, Check, FileCheck, FileX, Loader2, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -11,18 +11,22 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import AgentWorkflow from "@/components/AgentWorkflow";
 import ChatInterface from "@/components/ChatInterface";
 import Header from "@/components/Header";
 import { useToast } from "@/hooks/use-toast";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { apiClient, type Opportunity, type Document as ApiDocument, type Analysis as ApiAnalysis } from "@/lib/api-client";
 
 const Analysis = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
+  const opportunityId = searchParams.get("id");
+  
   const [activeAgent, setActiveAgent] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string>("run-1");
+  const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [analysisRunName, setAnalysisRunName] = useState("");
   const [investmentHypothesis, setInvestmentHypothesis] = useState("");
@@ -30,81 +34,113 @@ const Analysis = () => {
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
-  const [completedAgents, setCompletedAgents] = useState<string[]>([
-    'financial', 'risk', 'market', 'compliance', 'challenger', 'supporter', 'summary'
-  ]);
+  const [completedAgents, setCompletedAgents] = useState<string[]>([]);
 
-  const opportunityName = "TechCo Series B Investment";
+  // API data state
+  const [opportunity, setOpportunity] = useState<Opportunity | null>(null);
+  const [documents, setDocuments] = useState<ApiDocument[]>([]);
+  const [analyses, setAnalyses] = useState<ApiAnalysis[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Document processing status
-  const [documents] = useState({
-    total: 5,
-    pending: 0,
-    processing: 0,
-    completed: 5,
-    error: 0,
-  });
+  const opportunityName = opportunity?.display_name || "Loading...";
 
-  const allDocumentsProcessed = documents.completed === documents.total && documents.total > 0;
-  const hasDocuments = documents.total > 0;
-  const processingProgress = hasDocuments ? Math.round((documents.completed / documents.total) * 100) : 0;
+  // Calculate document processing status from API data
+  const documentStats = {
+    total: documents.length,
+    pending: documents.filter(d => d.processing_status === 'pending').length,
+    processing: documents.filter(d => d.processing_status === 'processing').length,
+    completed: documents.filter(d => d.processing_status === 'completed').length,
+    error: documents.filter(d => d.processing_status === 'error').length,
+  };
 
-  const analysisRuns = [
-    {
-      id: "run-1",
-      name: "TechCo Series B Analysis",
-      date: "2025-10-28",
-      time: "14:30",
-      status: "complete",
-      overallScore: 79,
-    },
-    {
-      id: "run-2",
-      name: "FinanceApp Due Diligence",
-      date: "2025-10-25",
-      time: "09:15",
-      status: "complete",
-      overallScore: 82,
-    },
-    {
-      id: "run-3",
-      name: "HealthTech Startup Review",
-      date: "2025-10-22",
-      time: "16:45",
-      status: "complete",
-      overallScore: 71,
-    },
-  ];
+  const allDocumentsProcessed = documentStats.completed === documentStats.total && documentStats.total > 0;
+  const hasDocuments = documentStats.total > 0;
+  const processingProgress = hasDocuments ? Math.round((documentStats.completed / documentStats.total) * 100) : 0;
+
+  // Fetch opportunity, documents, and analyses from API
+  useEffect(() => {
+    if (!opportunityId) {
+      toast({
+        variant: "destructive",
+        title: "Missing opportunity ID",
+        description: "Please select an opportunity from the dashboard",
+      });
+      navigate("/");
+      return;
+    }
+
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Fetch opportunity, documents, and analyses in parallel
+        const [oppData, docsData, analysesData] = await Promise.all([
+          apiClient.getOpportunity(opportunityId),
+          apiClient.getOpportunityDocuments(opportunityId),
+          apiClient.getOpportunityAnalyses(opportunityId),
+        ]);
+
+        setOpportunity(oppData);
+        setDocuments(docsData);
+        setAnalyses(analysesData);
+
+        // Set the most recent analysis as selected if available
+        if (analysesData.length > 0) {
+          const sortedAnalyses = [...analysesData].sort((a, b) => 
+            new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
+          );
+          setSelectedRunId(sortedAnalyses[0].id);
+          
+          // Extract completed agents from the selected analysis
+          const selectedAnalysis = sortedAnalyses[0];
+          if (selectedAnalysis.agent_results) {
+            setCompletedAgents(Object.keys(selectedAnalysis.agent_results));
+          }
+        }
+      } catch (error) {
+        console.error("Failed to fetch analysis data:", error);
+        toast({
+          variant: "destructive",
+          title: "Error loading analysis",
+          description: error instanceof Error ? error.message : "Failed to load analysis data",
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [opportunityId, navigate, toast]);
+
+  // Transform API analyses to match UI expectations
+  const analysisRuns = analyses.map(analysis => ({
+    id: analysis.id,
+    name: analysis.name,
+    date: new Date(analysis.created_at).toISOString().split('T')[0],
+    time: new Date(analysis.created_at).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }),
+    status: analysis.status,
+    overallScore: analysis.overall_score || 0,
+  }));
+
+  // Get the selected analysis
+  const selectedAnalysis = analyses.find(a => a.id === selectedRunId);
+
+  // Extract insights from selected analysis agent results
+  const getAgentInsights = (agentId: string): string[] => {
+    if (!selectedAnalysis?.agent_results) return [];
+    const agentResult = selectedAnalysis.agent_results[agentId];
+    if (!agentResult || typeof agentResult !== 'object') return [];
+    return (agentResult as { insights?: string[] }).insights || [];
+  };
 
   const insights = {
-    financial: [
-      "Revenue growth of 23% YoY demonstrates strong market traction",
-      "EBITDA margin of 18% is above industry average",
-    ],
-    risk: [
-      "High customer concentration risk - top 3 clients represent 60% of revenue",
-      "Technology infrastructure requires modernization investment",
-    ],
-    market: [
-      "Total addressable market estimated at $12B with 15% CAGR",
-      "Strong competitive positioning in mid-market segment",
-    ],
-    compliance: [
-      "All regulatory filings are current and complete",
-      "Corporate governance structure meets institutional standards",
-    ],
-    challenger: [
-      "High valuation relative to current revenue multiples",
-      "Unproven scalability in international markets",
-    ],
-    supporter: [
-      "Strong product-market fit with expanding customer base",
-      "Experienced leadership team with successful track record",
-    ],
-    summary: [
-      "Investment score: 79/100 - Recommend proceeding with caution",
-      "Overall risk level: Medium with strong upside potential",
-    ],
+    financial: getAgentInsights('financial'),
+    risk: getAgentInsights('risk'),
+    market: getAgentInsights('market'),
+    compliance: getAgentInsights('compliance'),
+    challenger: getAgentInsights('challenger'),
+    supporter: getAgentInsights('supporter'),
+    summary: getAgentInsights('summary'),
   };
 
   const agents = [
@@ -685,32 +721,81 @@ This investment opportunity scores **79/100**, representing a **solid investment
     setIsDialogOpen(true);
   };
 
-  const handleConfirmRun = () => {
-    // TODO: Implement the logic to create a new analysis run
-    console.log("Creating new analysis run:", analysisRunName);
-    console.log("Investment hypothesis:", investmentHypothesis);
-    setIsDialogOpen(false);
-    setAnalysisRunName("");
-    setInvestmentHypothesis("");
-    setIsAnalysisRunning(true);
-    setCompletedAgents([]); // Clear all agent results
-    
-    // Simulate agents completing one by one
-    const agentOrder = ['financial', 'risk', 'market', 'compliance', 'supporter', 'challenger', 'summary'];
-    const agentDelay = 1500; // 1.5 seconds between each agent
-    
-    agentOrder.forEach((agentId, index) => {
-      setTimeout(() => {
-        setCompletedAgents(prev => [...prev, agentId]);
-        
-        // Mark analysis as complete when last agent finishes
-        if (index === agentOrder.length - 1) {
-          setTimeout(() => {
-            setIsAnalysisRunning(false);
-          }, 500);
-        }
-      }, agentDelay * (index + 1));
-    });
+  const handleConfirmRun = async () => {
+    if (!analysisRunName.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Missing analysis name",
+        description: "Please provide a name for the analysis run",
+      });
+      return;
+    }
+
+    if (!opportunityId) {
+      toast({
+        variant: "destructive",
+        title: "Missing opportunity ID",
+        description: "Cannot create analysis without an opportunity",
+      });
+      return;
+    }
+
+    try {
+      setIsDialogOpen(false);
+      setIsAnalysisRunning(true);
+      setCompletedAgents([]); // Clear all agent results
+
+      // Create new analysis via API
+      const newAnalysis = await apiClient.createAnalysis(
+        opportunityId,
+        analysisRunName,
+        investmentHypothesis || undefined
+      );
+
+      // Start the analysis workflow
+      await apiClient.startAnalysis(opportunityId, newAnalysis.id);
+
+      setSelectedRunId(newAnalysis.id);
+      
+      toast({
+        title: "Analysis started",
+        description: "AI agents are now analyzing the opportunity",
+      });
+
+      // Simulate agents completing one by one (in real app, this would come from SSE/WebSocket)
+      const agentOrder = ['financial', 'risk', 'market', 'compliance', 'supporter', 'challenger', 'summary'];
+      const agentDelay = 2000; // 2 seconds between each agent
+      
+      agentOrder.forEach((agentId, index) => {
+        setTimeout(() => {
+          setCompletedAgents(prev => [...prev, agentId]);
+          
+          // Mark analysis as complete when last agent finishes
+          if (index === agentOrder.length - 1) {
+            setTimeout(() => {
+              setIsAnalysisRunning(false);
+              toast({
+                title: "Analysis complete",
+                description: "All agents have finished analyzing",
+              });
+            }, 500);
+          }
+        }, agentDelay * (index + 1));
+      });
+
+      // Clear form
+      setAnalysisRunName("");
+      setInvestmentHypothesis("");
+
+    } catch (error) {
+      console.error("Failed to create analysis:", error);
+      setIsAnalysisRunning(false);
+      toast({
+        variant: "destructive",
+        title: "Error creating analysis",
+        description: error instanceof Error ? error.message : "Failed to create analysis",
+      });
+    }
   };
 
   const handleCancelRun = () => {
@@ -747,6 +832,46 @@ This investment opportunity scores **79/100**, representing a **solid investment
 
   const selectedAgent = agents.find(agent => agent.id === selectedAgentDetail);
 
+  // Show loading state while fetching data
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-center items-center py-20">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Show error if no opportunity found
+  if (!opportunity) {
+    return (
+      <div className="min-h-screen bg-background">
+        <Header />
+        <div className="container mx-auto px-4 py-8">
+          <Alert variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertTitle>Opportunity not found</AlertTitle>
+            <AlertDescription>
+              The requested opportunity could not be found. Please return to the dashboard.
+            </AlertDescription>
+          </Alert>
+          <Button 
+            variant="outline" 
+            onClick={() => navigate("/")}
+            className="mt-4"
+          >
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            Back to Dashboard
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <Header />
@@ -782,7 +907,7 @@ This investment opportunity scores **79/100**, representing a **solid investment
               {hasDocuments && (
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="text-xs h-5">
-                    {documents.total} Total
+                    {documentStats.total} Total
                   </Badge>
                   {allDocumentsProcessed ? (
                     <Badge className="bg-green-500 text-xs h-5">
@@ -792,7 +917,7 @@ This investment opportunity scores **79/100**, representing a **solid investment
                   ) : (
                     <Badge variant="secondary" className="text-xs h-5">
                       <Clock className="h-2.5 w-2.5 mr-1" />
-                      {documents.completed}/{documents.total} Processed
+                      {documentStats.completed}/{documentStats.total} Processed
                     </Badge>
                   )}
                 </div>
@@ -830,23 +955,23 @@ This investment opportunity scores **79/100**, representing a **solid investment
 
               <div className="grid grid-cols-5 gap-2">
                 <div className="text-center py-1.5 px-2 bg-green-50 dark:bg-green-950/20 border border-green-200 dark:border-green-800 rounded">
-                  <div className="text-lg font-bold text-green-700 dark:text-green-400">{documents.completed}</div>
+                  <div className="text-lg font-bold text-green-700 dark:text-green-400">{documentStats.completed}</div>
                   <div className="text-[10px] text-green-600 dark:text-green-500">Done</div>
                 </div>
                 <div className="text-center py-1.5 px-2 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded">
-                  <div className="text-lg font-bold text-blue-700 dark:text-blue-400">{documents.processing}</div>
+                  <div className="text-lg font-bold text-blue-700 dark:text-blue-400">{documentStats.processing}</div>
                   <div className="text-[10px] text-blue-600 dark:text-blue-500">Active</div>
                 </div>
                 <div className="text-center py-1.5 px-2 bg-yellow-50 dark:bg-yellow-950/20 border border-yellow-200 dark:border-yellow-800 rounded">
-                  <div className="text-lg font-bold text-yellow-700 dark:text-yellow-400">{documents.pending}</div>
+                  <div className="text-lg font-bold text-yellow-700 dark:text-yellow-400">{documentStats.pending}</div>
                   <div className="text-[10px] text-yellow-600 dark:text-yellow-500">Queue</div>
                 </div>
                 <div className="text-center py-1.5 px-2 bg-red-50 dark:bg-red-950/20 border border-red-200 dark:border-red-800 rounded">
-                  <div className="text-lg font-bold text-red-700 dark:text-red-400">{documents.error}</div>
+                  <div className="text-lg font-bold text-red-700 dark:text-red-400">{documentStats.error}</div>
                   <div className="text-[10px] text-red-600 dark:text-red-500">Error</div>
                 </div>
                 <div className="text-center py-1.5 px-2 bg-muted/50 border border-border rounded">
-                  <div className="text-lg font-bold text-foreground">{documents.total}</div>
+                  <div className="text-lg font-bold text-foreground">{documentStats.total}</div>
                   <div className="text-[10px] text-muted-foreground">Total</div>
                 </div>
               </div>
