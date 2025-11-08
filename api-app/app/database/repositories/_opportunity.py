@@ -65,13 +65,19 @@ class OpportunityRepository(BaseRepository):
         owner_id: Optional[str] = None
     ) -> Optional[Opportunity]:
         """Update an existing opportunity"""
-        # Verify opportunity exists and user has access
-        existing = await self.get_by_id(opportunity_id, owner_id)
+        # Verify opportunity exists using the query-based method
+        existing = await self.get_opportunity_by_id(opportunity_id)
         if not existing:
             return None
         
-        # Update the opportunity
-        updated_item = await self.update(opportunity_id, updates, owner_id)
+        # Optionally verify owner_id matches (if provided)
+        if owner_id and existing.owner_id != owner_id:
+            return None
+        
+        # Update the opportunity - use the opportunity's id as partition key
+        updated_item = await self.update(
+            opportunity_id, updates, opportunity_id
+        )
         return Opportunity(**updated_item)
     
     async def delete_opportunity(
@@ -81,14 +87,20 @@ class OpportunityRepository(BaseRepository):
         soft_delete: bool = True
     ) -> bool:
         """Delete an opportunity (soft delete by default)"""
-        # Verify opportunity exists and user has access
-        existing = await self.get_by_id(opportunity_id, owner_id)
+        # Verify opportunity exists using query-based method
+        existing = await self.get_opportunity_by_id(opportunity_id)
         if not existing:
+            return False
+        
+        # Optionally verify owner_id matches (if provided)
+        if owner_id and existing.owner_id != owner_id:
             return False
         
         if soft_delete:
             # Soft delete: mark as inactive
-            await self.update(opportunity_id, {"is_active": False}, opportunity_id)
+            await self.update(
+                opportunity_id, {"is_active": False}, opportunity_id
+            )
         else:
             # Hard delete: remove from database
             await self.delete(opportunity_id, opportunity_id)

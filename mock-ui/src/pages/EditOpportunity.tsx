@@ -42,8 +42,9 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import Header from "@/components/Header";
+import { apiClient, type Opportunity, type Document as ApiDocument } from "@/lib/api-client";
 
-type ProcessingStatus = "completed" | "processing" | "failed";
+type ProcessingStatus = "completed" | "processing" | "failed" | "pending" | "error";
 
 interface ExistingDocument {
   id: string;
@@ -74,6 +75,7 @@ const EditOpportunity = () => {
   const [newTag, setNewTag] = useState("");
   const [editingDocumentTags, setEditingDocumentTags] = useState<string | null>(null);
   const [existingDocNewTag, setExistingDocNewTag] = useState("");
+  const [opportunity, setOpportunity] = useState<Opportunity | null>(null);
 
   const [formData, setFormData] = useState({
     name: "",
@@ -86,135 +88,66 @@ const EditOpportunity = () => {
     notes: "",
   });
 
-  // Mock data loading - replace with actual API call
+  // Load opportunity data from API
   useEffect(() => {
-    const loadOpportunityData = () => {
+    const loadOpportunityData = async () => {
       if (!opportunityId) {
         navigate("/");
         return;
       }
 
-      // Simulate API call
-      setTimeout(() => {
-        // Mock data based on opportunity ID
-        const mockOpportunities: { [key: string]: any } = {
-          "1": {
-            name: "SaaS Platform Expansion",
-            company: "TechCo Solutions",
-            description: "Enterprise SaaS platform for project management",
-            stage: "series-b",
-            amount: "15M",
-            date: "2025-10-15",
-            industry: "technology",
-            notes: "Strong team with proven track record",
-            documents: [
-              {
-                id: "doc1",
-                name: "Business_Plan_2025.pdf",
-                size: 2457600,
-                uploadDate: "2025-09-15",
-                type: "application/pdf",
-                status: "completed" as ProcessingStatus,
-                tags: ["business", "strategy", "financial"],
-              },
-              {
-                id: "doc2",
-                name: "Financial_Statements_Q3.xlsx",
-                size: 1536000,
-                uploadDate: "2025-09-20",
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                status: "completed" as ProcessingStatus,
-                tags: ["financial", "quarterly"],
-              },
-              {
-                id: "doc3",
-                name: "Market_Analysis.docx",
-                size: 983040,
-                uploadDate: "2025-09-25",
-                type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                status: "processing" as ProcessingStatus,
-                tags: ["market", "research"],
-              },
-            ],
-          },
-          "2": {
-            name: "Green Energy Initiative",
-            company: "EcoPower Inc",
-            description: "Renewable energy solutions for commercial buildings",
-            stage: "series-a",
-            amount: "8M",
-            date: "2025-10-20",
-            industry: "energy",
-            notes: "Innovative solar panel technology",
-            documents: [
-              {
-                id: "doc4",
-                name: "Technical_Whitepaper.pdf",
-                size: 3145728,
-                uploadDate: "2025-09-10",
-                type: "application/pdf",
-                status: "completed" as ProcessingStatus,
-                tags: ["technical", "whitepaper"],
-              },
-              {
-                id: "doc5",
-                name: "Revenue_Projections.xlsx",
-                size: 819200,
-                uploadDate: "2025-09-18",
-                type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                status: "failed" as ProcessingStatus,
-                tags: ["financial"],
-              },
-            ],
-          },
-          "3": {
-            name: "Healthcare AI Platform",
-            company: "MediTech AI",
-            description: "AI-powered diagnostic assistance platform",
-            stage: "seed",
-            amount: "3.5M",
-            date: "2025-10-25",
-            industry: "healthcare",
-            notes: "FDA approval in progress",
-            documents: [
-              {
-                id: "doc6",
-                name: "Clinical_Trial_Results.pdf",
-                size: 4194304,
-                uploadDate: "2025-09-05",
-                type: "application/pdf",
-                status: "completed" as ProcessingStatus,
-                tags: ["clinical", "research", "medical"],
-              },
-            ],
-          },
-        };
+      try {
+        setIsLoading(true);
 
-        const opportunityData = mockOpportunities[opportunityId];
+        // Fetch opportunity and documents in parallel
+        const [oppData, docsData] = await Promise.all([
+          apiClient.getOpportunity(opportunityId),
+          apiClient.getOpportunityDocuments(opportunityId),
+        ]);
+
+        setOpportunity(oppData);
+
+        // Extract settings from opportunity
+        const settings = oppData.settings as Record<string, unknown> || {};
         
-        if (opportunityData) {
-          setFormData({
-            name: opportunityData.name,
-            company: opportunityData.company,
-            description: opportunityData.description,
-            stage: opportunityData.stage,
-            amount: opportunityData.amount,
-            date: opportunityData.date,
-            industry: opportunityData.industry,
-            notes: opportunityData.notes,
-          });
-          setExistingDocuments(opportunityData.documents);
-        } else {
-          toast({
-            title: "Opportunity not found",
-            description: "The requested opportunity could not be found",
-            variant: "destructive",
-          });
-          navigate("/");
-        }
-        
+        setFormData({
+          name: oppData.display_name,
+          company: (settings.company as string) || "",
+          description: oppData.description,
+          stage: (settings.stage as string) || "",
+          amount: (settings.amount as string) || "",
+          date: (settings.date as string) || "",
+          industry: (settings.industry as string) || "",
+          notes: (settings.notes as string) || "",
+        });
+
+        // Transform documents to UI format
+        const transformedDocs: ExistingDocument[] = docsData.map(doc => ({
+          id: doc.id,
+          name: doc.name,
+          size: doc.size,
+          uploadDate: new Date(doc.uploaded_at).toISOString().split('T')[0],
+          type: doc.mime_type,
+          status: doc.processing_status as ProcessingStatus,
+          tags: doc.tags,
+        }));
+
+        setExistingDocuments(transformedDocs);
+      } catch (error) {
+        console.error("Failed to load opportunity:", error);
+        const errorMessage = error instanceof Error ? error.message : "Failed to load opportunity data";
+        toast({
+          title: "Error loading opportunity",
+          description: errorMessage.includes("404") 
+            ? "This opportunity was not found. It may have been deleted or doesn't exist in the database."
+            : errorMessage,
+          variant: "destructive",
+        });
+        // Don't navigate away immediately to let user see the error
+        setTimeout(() => navigate("/"), 2000);
+      } finally {
         setIsLoading(false);
-      }, 500);
+      }
     };
 
     loadOpportunityData();
@@ -302,6 +235,9 @@ const EditOpportunity = () => {
         return <CheckCircle2 className="h-4 w-4 text-green-600" />;
       case "processing":
         return <Clock className="h-4 w-4 text-blue-600 animate-pulse" />;
+      case "pending":
+        return <Clock className="h-4 w-4 text-gray-600" />;
+      case "error":
       case "failed":
         return <AlertCircle className="h-4 w-4 text-red-600" />;
     }
@@ -311,6 +247,8 @@ const EditOpportunity = () => {
     const variants: { [key in ProcessingStatus]: string } = {
       completed: "bg-green-100 text-green-800 border-green-200",
       processing: "bg-blue-100 text-blue-800 border-blue-200",
+      pending: "bg-gray-100 text-gray-800 border-gray-200",
+      error: "bg-red-100 text-red-800 border-red-200",
       failed: "bg-red-100 text-red-800 border-red-200",
     };
     
@@ -326,28 +264,43 @@ const EditOpportunity = () => {
     setDocumentToDelete(documentId);
   };
 
-  const handleDeleteDocument = () => {
-    if (documentToDelete) {
+  const handleDeleteDocument = async () => {
+    if (!documentToDelete || !opportunityId) return;
+
+    try {
+      await apiClient.deleteDocument(opportunityId, documentToDelete);
+      
       setExistingDocuments((prev) =>
         prev.filter((doc) => doc.id !== documentToDelete)
       );
+      
       toast({
-        title: "Document removed",
-        description: "The document has been marked for deletion",
+        title: "Document deleted",
+        description: "The document has been removed successfully",
       });
       setDocumentToDelete(null);
+    } catch (error) {
+      console.error("Failed to delete document:", error);
+      toast({
+        title: "Delete failed",
+        description: error instanceof Error ? error.message : "Failed to delete document",
+        variant: "destructive",
+      });
     }
   };
 
   const handleDownloadDocument = (document: ExistingDocument) => {
-    // Simulate document download
+    // Open document in new tab for download
+    const downloadUrl = `${apiClient['baseUrl']}/api/opportunity/${opportunityId}/documents/${document.id}/download`;
+    window.open(downloadUrl, '_blank');
+    
     toast({
       title: "Downloading",
       description: `Downloading ${document.name}...`,
     });
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     // Validation
@@ -360,28 +313,81 @@ const EditOpportunity = () => {
       return;
     }
 
+    if (!opportunityId) {
+      return;
+    }
+
     setIsSaving(true);
 
-    // Simulate save operation
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      // Update opportunity details
+      await apiClient.updateOpportunity(opportunityId, {
+        display_name: formData.name,
+        description: formData.description,
+        settings: {
+          company: formData.company,
+          stage: formData.stage,
+          amount: formData.amount,
+          date: formData.date,
+          industry: formData.industry,
+          notes: formData.notes,
+        },
+      });
+
       toast({
         title: "Changes saved successfully",
         description: "The opportunity has been updated",
       });
-      
-      // If new files were uploaded, show additional message
+
+      // Upload new files if any
       if (newFiles.length > 0) {
-        setTimeout(() => {
-          toast({
-            title: "Processing new documents",
-            description: `${newFiles.length} new document(s) are being analyzed by AI`,
-          });
-        }, 500);
+        const files = newFiles.map(({ file }) => file);
+        const allTags = [...new Set(newFiles.flatMap(({ tags }) => tags))];
+
+        await apiClient.uploadDocuments(opportunityId, files, allTags);
+
+        toast({
+          title: "Documents uploaded",
+          description: `${newFiles.length} new document(s) uploaded and being processed`,
+        });
+
+        // Clear new files
+        setNewFiles([]);
       }
+
+      // Reload the opportunity data to reflect changes
+      const [oppData, docsData] = await Promise.all([
+        apiClient.getOpportunity(opportunityId),
+        apiClient.getOpportunityDocuments(opportunityId),
+      ]);
+
+      setOpportunity(oppData);
       
-      navigate("/");
-    }, 2000);
+      const transformedDocs: ExistingDocument[] = docsData.map(doc => ({
+        id: doc.id,
+        name: doc.name,
+        size: doc.size,
+        uploadDate: new Date(doc.uploaded_at).toISOString().split('T')[0],
+        type: doc.mime_type,
+        status: doc.processing_status as ProcessingStatus,
+        tags: doc.tags,
+      }));
+
+      setExistingDocuments(transformedDocs);
+      
+    } catch (error) {
+      console.error("Failed to save changes:", error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to save changes";
+      toast({
+        title: "Save failed",
+        description: errorMessage.includes("404")
+          ? "This opportunity no longer exists in the database."
+          : errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const formatFileSize = (bytes: number) => {
