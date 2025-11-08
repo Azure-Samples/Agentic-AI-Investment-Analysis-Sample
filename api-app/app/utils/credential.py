@@ -1,23 +1,41 @@
-from azure.identity import ChainedTokenCredential, EnvironmentCredential, AzureCliCredential
-from azure.identity.aio import ChainedTokenCredential as ChainedTokenCredentialAsync, EnvironmentCredential as EnvironmentCredentialAsync, AzureCliCredential as AzureCliCredentialAsync
+from azure.identity import DefaultAzureCredential
+from azure.identity.aio import (
+    DefaultAzureCredential as DefaultAzureCredentialAsync,
+)
+
 
 async def get_azure_credential_async():
-    credential_chain = (
-        # Try EnvironmentCredential first
-        EnvironmentCredentialAsync(),
-        # Fallback to Azure CLI if EnvironmentCredential fails
-        AzureCliCredentialAsync(),
+    """
+    Get Azure credential for async operations.
+    Uses DefaultAzureCredential which tries credentials in this order:
+    1. EnvironmentCredential
+    2. ManagedIdentityCredential
+    3. AzureDeveloperCliCredential (azd auth)
+    4. Others...
+    
+    Note: AzureCliCredential is excluded due to known issues with
+    Cosmos DB scope handling.
+    """
+    return DefaultAzureCredentialAsync(
+        exclude_cli_credential=True,
+        exclude_powershell_credential=True,
+        exclude_visual_studio_code_credential=True,
     )
-
-    return ChainedTokenCredentialAsync(*credential_chain)
 
 
 def get_azure_credential():
-    credential_chain = (
-        # Try EnvironmentCredential first
-        EnvironmentCredential(),
-        # Fallback to Azure CLI if EnvironmentCredential fails
-        AzureCliCredential(),
+    """
+    Get Azure credential for sync operations.
+    Uses DefaultAzureCredential with CLI excluded due to known
+    Cosmos DB authentication issues.
+    """
+    return DefaultAzureCredential(
+        exclude_cli_credential=True,
+        exclude_powershell_credential=True,
+        exclude_visual_studio_code_credential=True,
     )
 
-    return ChainedTokenCredential(*credential_chain)
+
+
+
+

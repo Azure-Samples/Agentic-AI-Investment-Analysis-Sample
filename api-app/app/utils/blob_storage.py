@@ -1,12 +1,11 @@
 import logging
-import os
-from typing import Optional, BinaryIO
-from datetime import datetime, timedelta, timezone
-from azure.storage.blob import BlobServiceClient, BlobClient, ContentSettings, generate_blob_sas, BlobSasPermissions
-from azure.core.exceptions import ResourceNotFoundError, AzureError
+from typing import Optional
+from azure.storage.blob.aio import BlobServiceClient
+from azure.storage.blob import ContentSettings
+from azure.core.exceptions import ResourceNotFoundError
 
 from app.core.config import settings
-from app.utils.credential import get_azure_credential
+from app.utils.credential import get_azure_credential_async
 
 logger = logging.getLogger("app.utils.blob_storage")
 
@@ -22,14 +21,16 @@ class BlobStorageService:
     async def connect(self):
         """Initialize the blob service client"""
         try:
-            # Use DefaultAzureCredential (recommended for production)
-            credential = get_azure_credential()
+            # Use async Azure credential
+            credential = await get_azure_credential_async()
             account_url = f"https://{self.account_name}.blob.core.windows.net"
             self.blob_service_client = BlobServiceClient(
                 account_url=account_url,
                 credential=credential
             )
-            logger.info("Connected to Azure Blob Storage using DefaultAzureCredential")
+            logger.info(
+                "Connected to Azure Blob Storage using async credential"
+            )
             
             # Ensure container exists
             await self._ensure_container_exists()
@@ -41,14 +42,18 @@ class BlobStorageService:
     async def _ensure_container_exists(self):
         """Ensure the container exists, create if it doesn't"""
         try:
-            container_client = self.blob_service_client.get_container_client(self.container_name)
+            container_client = self.blob_service_client.get_container_client(
+                self.container_name
+            )
             
             # Check if container exists
-            if not container_client.exists():
-                container_client.create_container()
+            if not await container_client.exists():
+                await container_client.create_container()
                 logger.info(f"Created container: {self.container_name}")
             else:
-                logger.debug(f"Container already exists: {self.container_name}")
+                logger.debug(
+                    f"Container already exists: {self.container_name}"
+                )
                 
         except Exception as e:
             logger.error(f"Error ensuring container exists: {str(e)}")
@@ -67,7 +72,6 @@ class BlobStorageService:
             tuple: (blob_url, blob_name)
         """
         try:
-            blob_name = blob_name
             blob_client = self.blob_service_client.get_blob_client(
                 container=self.container_name,
                 blob=blob_name
@@ -79,7 +83,7 @@ class BlobStorageService:
                 content_settings = ContentSettings(content_type=content_type)
             
             # Upload the file
-            blob_client.upload_blob(
+            await blob_client.upload_blob(
                 file_content,
                 content_settings=content_settings,
                 overwrite=False
@@ -102,8 +106,8 @@ class BlobStorageService:
                 blob=blob_name
             )
             
-            download_stream = blob_client.download_blob()
-            file_content = download_stream.readall()
+            download_stream = await blob_client.download_blob()
+            file_content = await download_stream.readall()
             
             logger.info(f"Successfully downloaded file: {blob_name}")
             return file_content
@@ -123,7 +127,7 @@ class BlobStorageService:
                 blob=blob_name
             )
             
-            blob_client.delete_blob()
+            await blob_client.delete_blob()
             logger.info(f"Successfully deleted file: {blob_name}")
             return True
             
@@ -135,15 +139,20 @@ class BlobStorageService:
             raise
     
     async def delete_files_by_prefix(self, prefix: str) -> int:
-        """Delete all files with a given prefix (e.g., all files for an opportunity)"""
+        """
+        Delete all files with a given prefix
+        (e.g., all files for an opportunity)
+        """
         try:
-            container_client = self.blob_service_client.get_container_client(self.container_name)
+            container_client = self.blob_service_client.get_container_client(
+                self.container_name
+            )
             deleted_count = 0
             
             # List all blobs with the prefix
-            blob_list = container_client.list_blobs(name_starts_with=prefix)
-            
-            for blob in blob_list:
+            async for blob in container_client.list_blobs(
+                name_starts_with=prefix
+            ):
                 await self.delete_file(blob.name)
                 deleted_count += 1
             
@@ -151,7 +160,9 @@ class BlobStorageService:
             return deleted_count
             
         except Exception as e:
-            logger.error(f"Error deleting files with prefix {prefix}: {str(e)}")
+            logger.error(
+                f"Error deleting files with prefix {prefix}: {str(e)}"
+            )
             raise
     
     def generate_download_url(
@@ -177,13 +188,15 @@ class BlobStorageService:
             return blob_client.url
             
         except Exception as e:
-            logger.error(f"Error generating download URL for {blob_name}: {str(e)}")
+            logger.error(
+                f"Error generating download URL for {blob_name}: {str(e)}"
+            )
             raise
     
     async def close(self):
         """Close the blob service client"""
         if self.blob_service_client:
-            self.blob_service_client.close()
+            await self.blob_service_client.close()
             logger.info("Closed Azure Blob Storage connection")
 
 
