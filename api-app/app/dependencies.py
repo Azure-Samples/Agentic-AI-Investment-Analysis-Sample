@@ -1,5 +1,7 @@
 
-from app.utils.credential import get_azure_credential_async
+from agent_framework import BaseChatClient
+
+from app.utils.credential import get_azure_credential, get_azure_credential_async
 from app.core.config import settings
 from app.database.cosmos import CosmosDBClient
 
@@ -39,6 +41,20 @@ async def get_document_processing_service():
     from app.services.document_processing_service import DocumentProcessingService
     global cosmos_client
     return DocumentProcessingService(cosmos_client)
+
+async def get_workflow_events_service():
+    """Dependency to get WorkflowEventsService"""
+    from app.services.workflow_events_service import WorkflowEventsService
+    global cosmos_client
+    return WorkflowEventsService(cosmos_client)
+
+async def get_chat_client() -> BaseChatClient:
+    """Dependency to get AzureOpenAIChatClient"""
+    from agent_framework.azure import AzureOpenAIChatClient
+    credential = get_azure_credential()
+    return AzureOpenAIChatClient(endpoint=settings.AZURE_OPENAI_ENDPOINT,
+                                 deployment_name=settings.AZURE_OPENAI_DEPLOYMENT_NAME,
+                                 credential=credential)
 
 async def initialize_all():
     """Initialize all dependencies"""

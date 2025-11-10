@@ -74,6 +74,11 @@ class CosmosDBClient:
                 "partition_key": "/opportunity_id",
                 "throughput": 400
             },
+            {
+                "id": "workflow_events",
+                "partition_key": "/analysis_id",
+                "throughput": 400
+            },
         ]
         
         for container_config in containers_config:

@@ -5,6 +5,7 @@ from ._user import UserRepository
 from ._document import DocumentRepository
 from ._opportunity import OpportunityRepository
 from ._analysis import AnalysisRepository
+from ._workflow_event import WorkflowEventRepository
 
 try:
     __version__ = importlib.metadata.version(__name__)
@@ -16,5 +17,6 @@ __all__ = [
             "UserRepository",
             "DocumentRepository",
             "OpportunityRepository",
-            "AnalysisRepository"
+            "AnalysisRepository",
+            "WorkflowEventRepository"
            ]

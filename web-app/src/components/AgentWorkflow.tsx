@@ -14,14 +14,13 @@ import AgentWorkflowNode from '@/components/AgentWorkflowNode';
 import AgentWorkflowGroupNode from '@/components/AgentWorkflowGroupNode';
 
 interface AgentStatus {
-  status: 'pending' | 'running' | 'completed' | 'failed';
-  name?: string;
-  displayName?: string;
-  icon?: any;
-  color?: string;
-  score?: number;
-  insights?: string[];
-  result?: any;
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    name?: string;
+    displayName?: string;
+    icon?: any;
+    color?: string;
+    data?: any;
+    extractedResult?: string[];
 }
 
 interface AgentWorkflowProps {
@@ -30,81 +29,49 @@ interface AgentWorkflowProps {
 }
 
 const AgentWorkflow = ({ agentStatus, workflowStatus }: AgentWorkflowProps) => {
-  // Helper function to map agent status to node status
-  const mapAgentStatusToNodeStatus = (status: string): string => {
-    switch (status) {
-      case 'running':
-        return 'processing';
-      case 'completed':
-        return 'complete';
-      case 'failed':
-        return 'failed';
-      case 'pending':
-      default:
-        return 'pending';
-    }
-  };
-
-  // Helper function to get agent icon
-  const getAgentIcon = (agentName: string) => {
-    switch (agentName) {
-      case 'financial': return BarChart3;
-      case 'risk': return AlertTriangle;
-      case 'market': return TrendingUp;
-      case 'compliance': return Gavel;
-      case 'supporter': return ThumbsUp;
-      case 'challenger': return ThumbsDown;
-      case 'summary': return Brain;
-      default: return CheckCircle;
-    }
-  };
-
+  
   const agentData = [
     {
-      id: "start",
+      id: "data_prepper",
       name: "Prepare Data",
-      status: workflowStatus === 'idle' ? 'pending' : 'complete',
+      status: agentStatus['data_prepper'] ? agentStatus['data_prepper'].status : 'pending',
       icon: HardDriveDownload,
       position: { x: 550, y: -400 },
     },
     {
-      id: "financial",
-      name: "Financial Analysis",
-      status: agentStatus?.financial ? mapAgentStatusToNodeStatus(agentStatus.financial.status) : 'pending',
+      id: "financial_analyst",
+      name: "Financial Analyst",
+      status: agentStatus['financial_analyst'] ? agentStatus['financial_analyst'].status : 'pending',
       icon: BarChart3,
-      score: agentStatus?.financial?.score,
       position: { x: 50, y: -250 },
     },
     {
-      id: "risk",
-      name: "Risk Assessment",
-      status: agentStatus?.risk ? mapAgentStatusToNodeStatus(agentStatus.risk.status) : 'pending',
+      id: "risk_analyst",
+      name: "Risk Analyst",
+      status: agentStatus['risk_analyst'] ? agentStatus['risk_analyst'].status : 'pending',
       icon: AlertTriangle,
-      score: agentStatus?.risk?.score,
       position: { x: 200, y: -100 },
     },
     {
-      id: "market",
-      name: "Market Analysis",
-      status: agentStatus?.market ? mapAgentStatusToNodeStatus(agentStatus.market.status) : 'pending',
+      id: "market_analyst",
+      name: "Market Strategy Analyst",
+      status: agentStatus['market_analyst'] ? agentStatus['market_analyst'].status : 'pending',
       icon: TrendingUp,
-      score: agentStatus?.market?.score,
       position: { x: 350, y: 50 },
     },
     {
-      id: "compliance",
-      name: "Compliance Check",
-      status: agentStatus?.compliance ? mapAgentStatusToNodeStatus(agentStatus.compliance.status) : 'pending',
+      id: "compliance_analyst",
+      name: "Compliance Analyst",
+      status: agentStatus['compliance_analyst'] ? agentStatus['compliance_analyst'].status : 'pending',
       icon: Gavel,
-      score: agentStatus?.compliance?.score,
       position: { x: 500, y: 200 },
     },
     {
       id: "debate-group",
       name: "Investment Debate",
-      status: (agentStatus?.supporter?.status === 'completed' && agentStatus?.challenger?.status === 'completed') 
-        ? 'complete' 
-        : (agentStatus?.supporter?.status === 'running' || agentStatus?.challenger?.status === 'running')
+      status: (agentStatus['investment_supporter']?.status === 'completed' && agentStatus['investment_challenger']?.status === 'completed') 
+        ? 'complete'
+        : (agentStatus['investment_supporter']?.status === 'running' || agentStatus['investment_challenger']?.status === 'running')
         ? 'processing'
         : 'pending',
       icon: Brain,
@@ -112,25 +79,25 @@ const AgentWorkflow = ({ agentStatus, workflowStatus }: AgentWorkflowProps) => {
       isGroup: true,
     },
     {
-      id: "supporter",
+      id: "investment_supporter",
       name: "Supporter Agent",
-      status: agentStatus?.supporter ? mapAgentStatusToNodeStatus(agentStatus.supporter.status) : 'pending',
+      status: agentStatus['investment_supporter'] ? agentStatus['investment_supporter'].status : 'pending',
       icon: ThumbsUp,
       position: { x: 20, y: 40 },
       parentNode: "debate-group",
     },
     {
-      id: "challenger",
+      id: "investment_challenger",
       name: "Challenger Agent",
-      status: agentStatus?.challenger ? mapAgentStatusToNodeStatus(agentStatus.challenger.status) : 'pending',
+      status: agentStatus['investment_challenger'] ? agentStatus['investment_challenger'].status : 'pending',
       icon: ThumbsDown,
       position: { x: 340, y: 40 },
       parentNode: "debate-group",
     },
     {
-      id: "final",
-      name: "Final Report",
-      status: agentStatus?.summary ? mapAgentStatusToNodeStatus(agentStatus.summary.status) : 'pending',
+      id: "summary_report_generator",
+      name: "Summary Report",
+      status: agentStatus['summary_report_generator'] ? agentStatus['summary_report_generator'].status : 'pending',
       icon: Brain,
       position: { x: 190, y: 600 },
     },
@@ -143,8 +110,8 @@ const AgentWorkflow = ({ agentStatus, workflowStatus }: AgentWorkflowProps) => {
 
   const createNodesFromAgentData = () => 
     agentData.map((agent) => {
-      const isStart = agent.id === 'start';
-      const isFinal = agent.id === 'final';
+      const isStart = agent.id === 'data_prepper';
+      const isFinal = agent.id === 'summary_report_generator';
       const isGroup = agent.isGroup || false;
       
       if (isGroup) {
@@ -176,7 +143,6 @@ const AgentWorkflow = ({ agentStatus, workflowStatus }: AgentWorkflowProps) => {
           name: agent.name,
           status: agent.status,
           icon: agent.icon,
-          score: agent.score,
           isStart,
           isFinal,
         },
@@ -193,20 +159,20 @@ const AgentWorkflow = ({ agentStatus, workflowStatus }: AgentWorkflowProps) => {
   const initialNodes: Node[] = useMemo(() => createNodesFromAgentData(), []);
 
   const initialEdges: Edge[] = useMemo(() => [
-    { id: 'e-start-financial', source: 'start', target: 'financial', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-start-risk', source: 'start', target: 'risk', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-start-market', source: 'start', target: 'market', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-start-compliance', source: 'start', target: 'compliance', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    
-    { id: 'e-financial-debate', source: 'financial', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-risk-debate', source: 'risk', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-market-debate', source: 'market', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-compliance-debate', source: 'compliance', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-data_prepper-financial', source: 'data_prepper', target: 'financial_analyst', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-data_prepper-risk', source: 'data_prepper', target: 'risk_analyst', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-data_prepper-market', source: 'data_prepper', target: 'market_analyst', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-data_prepper-compliance', source: 'data_prepper', target: 'compliance_analyst', animated: true, style: { stroke: 'hsl(var(--primary))' } },
 
-    { id: 'e-supporter-challenger', source: 'supporter', target: 'challenger', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    { id: 'e-challenger-supporter', source: 'challenger', target: 'supporter', animated: true, style: { stroke: 'hsl(var(--primary))' } },
-    
-    { id: 'e-debate-final', source: 'debate-group', target: 'final', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-financial-debate', source: 'financial_analyst', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-risk-debate', source: 'risk_analyst', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-market-debate', source: 'market_analyst', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-compliance-debate', source: 'compliance_analyst', target: 'debate-group', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+
+    { id: 'e-supporter-challenger', source: 'investment_supporter', target: 'investment_challenger', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+    { id: 'e-challenger-supporter', source: 'investment_challenger', target: 'investment_supporter', animated: true, style: { stroke: 'hsl(var(--primary))' } },
+
+    { id: 'e-debate-summary', source: 'debate-group', target: 'summary_report_generator', animated: true, style: { stroke: 'hsl(var(--primary))' } },
   ], []);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);

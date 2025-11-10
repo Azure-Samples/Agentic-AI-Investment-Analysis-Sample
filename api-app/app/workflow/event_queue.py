@@ -8,33 +8,28 @@ from collections import defaultdict, deque
 import asyncio
 import json
 import logging
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger("app.workflow.event_queue")
 
-class WorkflowEvent:
-    """Represents a single workflow event"""
+class EventMessage(BaseModel):
+    """Represents a re-modeled workflow event into an event message suitable for SSE"""
 
-    def __init__(
-        self,
-        event_type: str,
-        agent: Optional[str] = None,
-        data: Optional[Dict[str, Any]] = None,
-        message: Optional[str] = None,
-        timestamp: Optional[str] = None
-    ):
-        self.event_type = event_type
-        self.agent = agent
-        self.data = data or {}
-        self.message = message
-        self.timestamp = timestamp or datetime.now(timezone.utc).isoformat()
+    type: str = Field(description="Type of the event")
+    executor: Optional[str] = Field(None, description="ID of the executor")
+    data: Optional[Any] = Field(None, description="Event data payload")
+    message: Optional[str] = Field(None, description="Optional message")
+    sequence: Optional[int] = Field(None, description="Sequence number of the event")
+    timestamp: Optional[str] = Field(datetime.now(timezone.utc).isoformat(), description="Timestamp of the event")
         
     def to_dict(self) -> Dict[str, Any]:
         """Convert event to dictionary"""
         return {
-            "event_type": self.event_type,
-            "agent": self.agent,
-            "data": self.data,
+            "type": self.type,
+            "executor": self.executor,
+            "data": self.data.to_dict() if self.data and hasattr(self.data, 'to_dict') else self.data,
             "message": self.message,
+            "sequence": self.sequence,
             "timestamp": self.timestamp
         }
     
@@ -59,46 +54,49 @@ class EventQueue:
         self._lock = asyncio.Lock()
         self._max_events = max_events_per_analysis
         
-    async def add_event(
+    async def add_event_message(
         self,
         analysis_id: str,
         event_type: str,
-        agent: Optional[str] = None,
-        data: Optional[Dict[str, Any]] = None,
+        executor: Optional[str] = None,
+        data: Optional[Any] = None,
         message: Optional[str] = None
-    ):
+    ) -> EventMessage:
         """Add an event to the queue for a specific analysis"""
         async with self._lock:
-            event = WorkflowEvent(
-                event_type=event_type,
-                agent=agent,
+            event_msg = EventMessage(
+                type=event_type,
+                executor=executor,
                 data=data,
-                message=message
+                message=message,
+                timestamp=datetime.now(timezone.utc).isoformat()
             )
             
             # Add sequence number to event data
             seq = self._sequence_numbers[analysis_id]
-            event.data['sequence'] = seq
+            event_msg.sequence = seq
             self._sequence_numbers[analysis_id] += 1
             
             # Store event
-            self._queues[analysis_id].append(event)
+            self._queues[analysis_id].append(event_msg)
             
             # Notify active listeners
             if analysis_id in self._listeners:
                 for listener_queue in self._listeners[analysis_id]:
                     try:
-                        await listener_queue.put(event)
+                        await listener_queue.put(event_msg)
                     except Exception as e:
                         logger.error(f"Error notifying listener: {str(e)}")
+
+            logger.debug(f"Added event to analysis {analysis_id}: {event_msg.type} - {event_msg.executor}")
             
-            logger.debug(f"Added event to analysis {analysis_id}: {event_type} - {agent}")
-    
+            return event_msg
+
     async def get_events(
         self,
         analysis_id: str,
         since_sequence: Optional[int] = None
-    ) -> List[WorkflowEvent]:
+    ) -> List[EventMessage]:
         """Get all events for an analysis, optionally since a sequence number"""
         async with self._lock:
             events = list(self._queues.get(analysis_id, []))

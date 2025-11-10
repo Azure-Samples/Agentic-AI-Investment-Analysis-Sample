@@ -5,6 +5,7 @@ from ._user import User
 from ._document import Document
 from ._analysis import Analysis
 from ._opportunity import Opportunity
+from ._workflow_event import WorkflowEvent
 
 try:
     __version__ = importlib.metadata.version(__name__)
@@ -17,4 +18,5 @@ __all__ = [
             "Document",
             "Analysis",
             "Opportunity",
+            "WorkflowEvent",
           ]

@@ -36,6 +36,9 @@ class Settings(BaseSettings):
     AZURE_STORAGE_ACCOUNT_NAME: str = ""
     AZURE_STORAGE_CONTAINER_NAME: str = "opportunity-documents"
 
+    # Azure OpenAI Settings
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_DEPLOYMENT_NAME: str = ""
 
 @lru_cache()
 def get_settings() -> Settings:

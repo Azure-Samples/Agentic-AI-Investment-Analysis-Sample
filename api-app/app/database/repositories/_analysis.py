@@ -60,8 +60,8 @@ class AnalysisRepository(BaseRepository):
     async def update_analysis(
         self,
         analysis_id: str,
-        updates: Dict[str, Any],
         opportunity_id: str,
+        updates: Dict[str, Any],
         owner_id: Optional[str] = None
     ) -> Optional[Analysis]:
         """Update an existing analysis"""

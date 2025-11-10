@@ -6,9 +6,6 @@ import apiClient from './client';
 import type {
   Analysis,
   AnalysisCreateRequest,
-  AnalysisUpdateRequest,
-  AnalysisCompleteRequest,
-  AnalysisFailRequest,
 } from './types';
 
 /**
@@ -37,17 +34,6 @@ export async function getAnalysis(opportunityId: string, analysisId: string): Pr
  */
 export async function createAnalysis(data: AnalysisCreateRequest): Promise<Analysis> {
   return apiClient.post<Analysis>('/analysis/', data);
-}
-
-/**
- * Update an existing analysis
- */
-export async function updateAnalysis(
-  opportunityId: string,
-  analysisId: string,
-  data: AnalysisUpdateRequest
-): Promise<Analysis> {
-  return apiClient.put<Analysis>(`/analysis/${opportunityId}/${analysisId}`, data);
 }
 
 /**
