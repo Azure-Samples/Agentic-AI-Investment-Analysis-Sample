@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException, status, Query, BackgroundTasks
 from fastapi.responses import StreamingResponse
 from typing import List, Optional, Dict, Any, AsyncGenerator
@@ -6,9 +7,9 @@ import logging
 import asyncio
 
 from app.core.auth import get_current_active_user
-from app.services.analysis_service import AnalysisService
+from app.services import AnalysisService, OpportunityService, WorkflowEventsService
 from app.workflow import WorkflowExecutor, get_event_queue
-from app.dependencies import get_analysis_service
+from app.dependencies import get_analysis_service, get_opportunity_service, get_workflow_events_service
 from app.models import Analysis, User
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
@@ -24,13 +25,13 @@ class AnalysisResponse(BaseModel):
     opportunity_id: str
     investment_hypothesis: Optional[str] = None
     status: str
-    overall_score: Optional[int] = None
     agent_results: Dict[str, Any] = {}
     result: Optional[str] = None
     started_at: Optional[str] = None
     completed_at: Optional[str] = None
     owner_id: str
     is_active: bool = True
+    error_details: Optional[Dict[str, Any]] = None
     created_at: str
     updated_at: str
 
@@ -43,13 +44,13 @@ class AnalysisResponse(BaseModel):
             opportunity_id=analysis.opportunity_id,
             investment_hypothesis=analysis.investment_hypothesis,
             status=analysis.status,
-            overall_score=analysis.overall_score,
             agent_results=analysis.agent_results,
             result=analysis.result,
             started_at=analysis.started_at,
             completed_at=analysis.completed_at,
             owner_id=analysis.owner_id,
             is_active=analysis.is_active,
+            error_details=analysis.error_details,
             created_at=analysis.created_at,
             updated_at=analysis.updated_at
         )
@@ -180,46 +181,6 @@ async def create_analysis(
             detail=f"Failed to create analysis: {str(e)}"
         )
 
-
-@router.put("/{opportunity_id}/{analysis_id}", response_model=AnalysisResponse)
-async def update_analysis(
-    opportunity_id: str,
-    analysis_id: str,
-    request: AnalysisUpdateRequest,
-    current_user: User = Depends(get_current_active_user),
-    analysis_service: AnalysisService = Depends(get_analysis_service)
-):
-    """Update an existing analysis"""
-    try:
-        analysis = await analysis_service.update_analysis(
-            analysis_id=analysis_id,
-            opportunity_id=opportunity_id,
-            owner_id=current_user.email,
-            name=request.name,
-            investment_hypothesis=request.investment_hypothesis,
-            status=request.status,
-            overall_score=request.overall_score,
-            agent_results=request.agent_results,
-            result=request.result,
-            tags=request.tags,
-            is_active=request.is_active
-        )
-        if not analysis:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"Analysis {analysis_id} not found"
-            )
-        return AnalysisResponse.from_analysis(analysis)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error updating analysis {analysis_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to update analysis: {str(e)}"
-        )
-
-
 @router.delete("/{opportunity_id}/{analysis_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_analysis(
     opportunity_id: str,
@@ -257,7 +218,9 @@ async def start_analysis(
     analysis_id: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
-    analysis_service: AnalysisService = Depends(get_analysis_service)
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    opportunity_service: OpportunityService = Depends(get_opportunity_service),
+    workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
 ):
     """Start an analysis run with background workflow execution"""
     try:
@@ -274,13 +237,12 @@ async def start_analysis(
             )
         
         # Execute workflow in background
-        workflow_executor = WorkflowExecutor(analysis_service)
+        workflow_executor = WorkflowExecutor(analysis_service, opportunity_service, workflow_events_service)
         background_tasks.add_task(
             workflow_executor.execute_workflow,
             analysis_id=analysis_id,
             opportunity_id=opportunity_id,
-            owner_id=current_user.email,
-            investment_hypothesis=analysis.investment_hypothesis
+            owner_id=current_user.email
         )
         
         logger.info(f"Started background workflow for analysis {analysis_id}")
@@ -296,7 +258,7 @@ async def start_analysis(
         )
 
 
-@router.get("/{opportunity_id}/{analysis_id}/events")
+@router.get("/{opportunity_id}/{analysis_id}/stream")
 async def stream_analysis_events(
     opportunity_id: str,
     analysis_id: str,
@@ -367,8 +329,9 @@ async def stream_analysis_events(
                     
             except Exception as e:
                 logger.error(f"Error in event stream for analysis {analysis_id}: {str(e)}")
+                logger.exception(e)
                 # Send error event
-                error_data = f'data: {{"event_type": "error", "message": "Stream error: {str(e)}"}}\n\n'
+                error_data = f'data: {{"type": "error", "message": "Stream error: {str(e)}", "data":  {{"error": "{str(e)}", "error_type": "{type(e).__name__}"}} , "timestamp": "{datetime.now(timezone.utc).isoformat()}"}}\n\n'
                 yield error_data
         
         return StreamingResponse(
@@ -391,5 +354,31 @@ async def stream_analysis_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to setup event stream: {str(e)}"
         )
-        
+
+
+@router.get("/{opportunity_id}/{analysis_id}/events")
+async def fetch_analysis_events(
+    opportunity_id: str,
+    analysis_id: str,
+    current_user: User = Depends(get_current_active_user),
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    opportunity_service: OpportunityService = Depends(get_opportunity_service),
+    workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
+):
+    """Fetch all events for a specific analysis"""
+    
+    try:
+        events = await workflow_events_service.get_events_by_analysis(analysis_id=analysis_id, 
+                                                                      opportunity_id=opportunity_id, 
+                                                                      owner_id=current_user.email)
+    
+        return events
+    except HTTPException:
+            raise
+    except Exception as e:
+        logger.error(f"Error fetching events for analysis {analysis_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to fetch events for analysis: {str(e)}"
+        )
 # endregion

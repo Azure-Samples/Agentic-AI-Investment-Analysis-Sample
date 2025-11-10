@@ -16,9 +16,9 @@ const AgentWorkflowNode = ({ data }: NodeProps<AgentWorkflowNodeData>) => {
   
   const getStatusColor = () => {
     switch (data.status) {
-      case 'complete':
+      case 'completed':
         return 'bg-green-500';
-      case 'processing':
+      case 'running':
         return 'bg-blue-500';
       case 'pending':
         return 'bg-gray-400';
@@ -35,7 +35,7 @@ const AgentWorkflowNode = ({ data }: NodeProps<AgentWorkflowNodeData>) => {
       
       {/* Status indicator */}
       <div className="absolute top-2 right-2 flex items-center gap-1">
-        {data.status === 'processing' && (
+        {data.status === 'running' && (
           <Loader2 className="h-3 w-3 animate-spin text-blue-500" />
         )}
         <div 
