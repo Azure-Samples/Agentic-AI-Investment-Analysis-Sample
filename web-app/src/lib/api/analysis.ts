@@ -7,6 +7,7 @@ import type {
   Analysis,
   AnalysisCreateRequest,
 } from './types';
+import type { EventMessage } from './analysisEvents';
 
 /**
  * Get all analyses for the current user
@@ -55,4 +56,17 @@ export async function deleteAnalysis(
   softDelete: boolean = true
 ): Promise<void> {
   return apiClient.delete<void>(`/analysis/${opportunityId}/${analysisId}`, { soft_delete: softDelete });
+}
+
+/**
+ * Fetch all events for a specific analysis
+ * @param opportunityId - The ID of the opportunity
+ * @param analysisId - The ID of the analysis
+ * @returns Promise resolving to an array of EventMessage objects
+ */
+export async function fetchAnalysisEvents(
+  opportunityId: string,
+  analysisId: string
+): Promise<EventMessage[]> {
+  return apiClient.get<EventMessage[]>(`/analysis/${opportunityId}/${analysisId}/events`);
 }

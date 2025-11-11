@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ArrowLeft, Brain, TrendingUp, AlertTriangle, CheckCircle, BarChart3, Play, Clock, FileText, Expand, Copy, Check, FileCheck, FileX, Loader2, AlertCircle } from "lucide-react";
+import { ArrowLeft, Brain, TrendingUp, AlertTriangle, CheckCircle, BarChart3, Play, Clock, FileText, Expand, Copy, Check, FileCheck, FileX, Loader2, AlertCircle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useNavigate, useSearchParams } from "react-router-dom";
 import ChatInterface from "@/components/ChatInterface";
 import Header from "@/components/Header";
@@ -38,10 +39,13 @@ const Analysis = () => {
   // UI states
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [isNewRunDialogOpen, setIsNewRunDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [analysisRunName, setAnalysisRunName] = useState("");
   const [investmentHypothesis, setInvestmentHypothesis] = useState("");
   const [isAnalysisRunning, setIsAnalysisRunning] = useState(false);
   const [isCreatingAnalysis, setIsCreatingAnalysis] = useState(false);
+  const [isDeletingAnalysis, setIsDeletingAnalysis] = useState(false);
+  const [useSoftDelete, setUseSoftDelete] = useState(true);
 
   // Fetch data on mount
   useEffect(() => {
@@ -70,6 +74,8 @@ const Analysis = () => {
         // Set the first analysis as selected by default
         if (analysesData.length > 0 && !selectedRunId) {
           setSelectedRunId(analysesData[0].id);
+
+          setIsAnalysisRunning(analysesData[0].status === "in_progress" || analysesData[0].status === "pending");
         }
       } catch (err: any) {
         console.error("Error fetching data:", err);
@@ -159,8 +165,7 @@ const Analysis = () => {
         a.id === startedAnalysis.id ? { ...a, status: startedAnalysis.status } : a
       ));
 
-      setIsAnalysisRunning(true);
-      
+     
     } catch (err: any) {
       console.error("Error creating or starting analysis:", err);
       toast({
@@ -170,8 +175,16 @@ const Analysis = () => {
       });
     } finally {
       setIsCreatingAnalysis(false);
-      setIsAnalysisRunning(false);
     }
+  };
+
+  const isSelectedAnalysisRunning = () => {
+    const selectedAnalysis = analyses.find(a => a.id === selectedRunId);
+    return selectedAnalysis?.status === "in_progress" || selectedAnalysis?.status === "pending";
+  };
+
+  const isAnyAnalysisRunning = () => {
+    return analyses.some(a => a.status === "in_progress" || a.status === "pending");
   };
 
   const handleAnalysisWorkflowComplete = (status: string, data: any) => {
@@ -187,6 +200,51 @@ const Analysis = () => {
     setIsNewRunDialogOpen(false);
     setAnalysisRunName("");
     setInvestmentHypothesis("");
+  };
+
+  const handleDeleteAnalysis = async () => {
+    if (!opportunityId || !selectedRunId) {
+      return;
+    }
+
+    try {
+      setIsDeletingAnalysis(true);
+      
+      // Get the analysis name before deleting for the toast message
+      const analysisToDelete = analyses.find(a => a.id === selectedRunId);
+      const analysisName = analysisToDelete?.name || "Analysis";
+
+      // Delete the analysis via API with the selected soft delete option
+      await analysisApi.deleteAnalysis(opportunityId, selectedRunId, useSoftDelete);
+
+      // Remove the deleted analysis from the list
+      const updatedAnalyses = analyses.filter(a => a.id !== selectedRunId);
+      setAnalyses(updatedAnalyses);
+
+      // Select the first remaining analysis, or clear selection if none left
+      if (updatedAnalyses.length > 0) {
+        setSelectedRunId(updatedAnalyses[0].id);
+      } else {
+        setSelectedRunId("");
+      }
+
+      toast({
+        title: "Analysis Deleted",
+        description: `"${analysisName}" has been ${useSoftDelete ? 'soft' : 'permanently'} deleted successfully.`,
+      });
+
+      setIsDeleteDialogOpen(false);
+      setUseSoftDelete(true); // Reset to default
+    } catch (err: any) {
+      console.error("Error deleting analysis:", err);
+      toast({
+        title: "Error",
+        description: err.message || "Failed to delete analysis. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeletingAnalysis(false);
+    }
   };
 
   // Show loading state
@@ -278,14 +336,14 @@ const Analysis = () => {
                   <Button 
                     size="sm"
                     onClick={handleNewAnalysisRun}
-                    disabled={isAnalysisRunning || isCreatingAnalysis}
+                    disabled={isCreatingAnalysis || isAnyAnalysisRunning()}
                     className="h-7 text-xs"
                   >
                     <Play className="mr-1 h-3 w-3" />
                     New Run
                   </Button>
                 </div>
-                <Select value={selectedRunId} onValueChange={setSelectedRunId} disabled={isAnalysisRunning || isCreatingAnalysis}>
+                <Select value={selectedRunId} onValueChange={setSelectedRunId} disabled={isCreatingAnalysis || isDeletingAnalysis}>
                   <SelectTrigger className="w-full h-9">
                     <SelectValue placeholder="Select an analysis run" />
                   </SelectTrigger>
@@ -302,6 +360,18 @@ const Analysis = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                {selectedRunId && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setIsDeleteDialogOpen(true)}
+                    disabled={isCreatingAnalysis || isDeletingAnalysis || isSelectedAnalysisRunning()}
+                    className="h-7 text-xs text-destructive hover:text-destructive hover:bg-destructive/10 w-full"
+                  >
+                    <Trash2 className="mr-1 h-3 w-3" />
+                    Delete Analysis Run
+                  </Button>
+                )}
               </div>
             </Card>
           )}
@@ -445,7 +515,7 @@ const Analysis = () => {
                   <AnalysisProcessingWorkflow
                     opportunityId={opportunityId}
                     analysisId={selectedRunId}
-                    analysisStatus={analyses.find(a => a.id === selectedRunId)?.status}
+                    analysisStatus={analyses.find(a => a.id === selectedRunId)?.status} // flags the initial status of the workflow as retrieved from the API
                     onComplete={(status, data) => {
                       handleAnalysisWorkflowComplete(status, data);
                     }}
@@ -517,6 +587,56 @@ const Analysis = () => {
                 </>
               ) : (
                 "Confirm Run"
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete Analysis Run</DialogTitle>
+            <DialogDescription>
+              Are you sure you want to delete "{analyses.find(a => a.id === selectedRunId)?.name}"? This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex items-center space-x-2 py-4">
+            <Checkbox 
+              id="soft-delete" 
+              checked={useSoftDelete}
+              onCheckedChange={(checked) => setUseSoftDelete(checked as boolean)}
+            />
+            <label
+              htmlFor="soft-delete"
+              className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+            >
+              Soft delete (mark as inactive instead of permanent deletion)
+            </label>
+          </div>
+          <DialogFooter>
+            <Button 
+              variant="outline" 
+              onClick={() => setIsDeleteDialogOpen(false)}
+              disabled={isDeletingAnalysis}
+            >
+              Cancel
+            </Button>
+            <Button 
+              variant="destructive"
+              onClick={handleDeleteAnalysis}
+              disabled={isDeletingAnalysis}
+            >
+              {isDeletingAnalysis ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Delete
+                </>
               )}
             </Button>
           </DialogFooter>

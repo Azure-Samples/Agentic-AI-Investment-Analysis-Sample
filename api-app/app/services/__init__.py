@@ -1,6 +1,7 @@
 import importlib.metadata
 
 from .analysis_service import AnalysisService
+from .analysis_chat_service import AnalysisChatService
 from .opportunity_service import OpportunityService
 from .user_service import UserService
 from .document_service import DocumentService
@@ -13,7 +14,8 @@ except importlib.metadata.PackageNotFoundError:
     __version__ = "0.0.0"  # Fallback for development mode
 
 __all__ = [
-            "AnalysisService", 
+            "AnalysisService",
+            "AnalysisChatService",
             "OpportunityService",
             "UserService",
             "DocumentService",

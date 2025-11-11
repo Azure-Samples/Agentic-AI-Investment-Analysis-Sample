@@ -8,15 +8,16 @@ import asyncio
 
 from app.core.auth import get_current_active_user
 from app.services import AnalysisService, OpportunityService, WorkflowEventsService
+from app.services.analysis_chat_service import AnalysisChatService
 from app.workflow import WorkflowExecutor, get_event_queue
-from app.dependencies import get_analysis_service, get_opportunity_service, get_workflow_events_service
-from app.models import Analysis, User
+from app.dependencies import get_analysis_service, get_opportunity_service, get_workflow_events_service, get_chat_client
+from app.models import Analysis, User, WorkflowEvent
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
 logger = logging.getLogger("app.routers.analysis")
 
-# region Models
+# region Request/Response Models
 
 class AnalysisResponse(BaseModel):
     id: str
@@ -87,9 +88,28 @@ class AnalysisCompleteRequest(BaseModel):
 class AnalysisFailRequest(BaseModel):
     error_message: Optional[str] = Field(None, description="Error message describing the failure")
 
+
+class ChatMessage(BaseModel):
+    role: str = Field(..., description="Role of the message sender: 'user' or 'assistant'")
+    content: str = Field(..., description="Content of the message")
+
+
+class ChatRequest(BaseModel):
+    message: str = Field(..., description="The user's input message")
+    history: Optional[List[ChatMessage]] = Field(default=None, description="Previous conversation messages")
+
+
+class ChatResponse(BaseModel):
+    message: str = Field(..., description="The AI assistant's response")
+    status: str = Field(default="success", description="Status of the request")
+
 # endregion
 
+################################
+
 # region Routes
+
+# region Analysis CRUD and Management
 
 @router.get("/", response_model=List[AnalysisResponse])
 async def get_analyses(
@@ -187,16 +207,30 @@ async def delete_analysis(
     analysis_id: str,
     soft_delete: bool = Query(True, description="Use soft delete (mark as inactive)"),
     current_user: User = Depends(get_current_active_user),
+    workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
     analysis_service: AnalysisService = Depends(get_analysis_service)
 ):
     """Delete an analysis"""
     try:
+        
+        # First delete associated workflow events
+        deleted_events_count = await workflow_events_service.delete_events_by_analysis(
+            analysis_id=analysis_id,
+            opportunity_id=opportunity_id,
+            owner_id=current_user.email,
+            soft_delete=soft_delete
+        )
+        logger.debug(f"Deleted {deleted_events_count} events for analysis {analysis_id}")
+        
+        # Now delete the analysis itself
         deleted = await analysis_service.delete_analysis(
             analysis_id=analysis_id,
             opportunity_id=opportunity_id,
             owner_id=current_user.email,
             soft_delete=soft_delete
         )
+        logger.debug(f"Analysis {analysis_id} deletion status: {deleted}")
+        
         if not deleted:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
@@ -211,6 +245,9 @@ async def delete_analysis(
             detail=f"Failed to delete analysis: {str(e)}"
         )
 
+# end region
+
+# region Analysis Execution and Events
 
 @router.post("/{opportunity_id}/{analysis_id}/start", response_model=AnalysisResponse)
 async def start_analysis(
@@ -356,13 +393,11 @@ async def stream_analysis_events(
         )
 
 
-@router.get("/{opportunity_id}/{analysis_id}/events")
+@router.get("/{opportunity_id}/{analysis_id}/events", response_model=List[WorkflowEvent])
 async def fetch_analysis_events(
     opportunity_id: str,
     analysis_id: str,
     current_user: User = Depends(get_current_active_user),
-    analysis_service: AnalysisService = Depends(get_analysis_service),
-    opportunity_service: OpportunityService = Depends(get_opportunity_service),
     workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
 ):
     """Fetch all events for a specific analysis"""
@@ -381,4 +416,95 @@ async def fetch_analysis_events(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to fetch events for analysis: {str(e)}"
         )
+        
+# endregion
+
+
+# region What If Analysis Chat
+
+@router.post("/{opportunity_id}/{analysis_id}/chat")
+async def chat_with_analysis(
+    opportunity_id: str,
+    analysis_id: str,
+    request: ChatRequest,
+    current_user: User = Depends(get_current_active_user),
+    analysis_service: AnalysisService = Depends(get_analysis_service),
+    opportunity_service: OpportunityService = Depends(get_opportunity_service),
+    chat_client = Depends(get_chat_client)
+):
+    """
+    Chat endpoint for 'what-if' analysis discussions with SSE streaming
+    
+    This endpoint allows users to ask questions about their investment analysis
+    and explore hypothetical scenarios using an AI assistant powered by agent framework.
+    
+    The response is streamed using Server-Sent Events (SSE) for real-time interaction.
+    
+    Events:
+    - start: Initial event when processing begins
+    - message: Chunks of the AI response as they're generated
+    - error: Error information if something goes wrong
+    - done: Completion event with the full message
+    """
+    try:
+        # Create chat service instance
+        chat_service = AnalysisChatService(
+            chat_client=chat_client,
+            analysis_service=analysis_service,
+            opportunity_service=opportunity_service
+        )
+        
+        # Convert history to dict format if provided
+        message_history = None
+        if request.history:
+            message_history = [
+                {"role": msg.role, "content": msg.content}
+                for msg in request.history
+            ]
+        
+        # Stream the chat response
+        async def event_generator() -> AsyncGenerator[str, None]:
+            """Generate SSE events for the chat response"""
+            try:
+                async for event in chat_service.stream_chat_message(
+                    user_message=request.message,
+                    analysis_id=analysis_id,
+                    opportunity_id=opportunity_id,
+                    owner_id=current_user.email,
+                    message_history=message_history
+                ):
+                    yield event
+                    
+            except Exception as e:
+                logger.error(f"Error in chat stream generator: {str(e)}")
+                # Send error event
+                import json
+                error_event = f"event: error\ndata: {json.dumps({'message': str(e), 'error_type': type(e).__name__})}\n\n"
+                yield error_event
+                # Send done event
+                yield f"event: done\ndata: {{}}\n\n"
+        
+        logger.info(f"Starting chat stream for analysis {analysis_id}")
+        
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",  # Disable buffering in nginx
+                "Access-Control-Allow-Origin": "*",  # Allow CORS for SSE
+                "Access-Control-Allow-Credentials": "true"
+            }
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error in chat endpoint for analysis {analysis_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to process chat message: {str(e)}"
+        )
+
 # endregion
