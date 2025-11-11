@@ -143,19 +143,20 @@ export function AnalysisProcessingWorkflow({
           setAgentStatus(updatedAgentStatus);
         }
 
-        setPreservedEvents(analysisData?.events || []);
-        // reset live enevts
-        
+        // Fetch events from the api and set preserved events
+        const fetchedEvents = await analysisApi.fetchAnalysisEvents(opportunityId, analysisId);
 
-        // // Call onComplete callback if provided
-        // if (onComplete) {
-        //   onComplete(analysisData.status, analysisData);
-        // }
+        setPreservedEvents(fetchedEvents || []);
+
       } catch (error) {
         console.error('Error loading cached results:', error);
         // Fall back to showing pending state
       } finally {
         setIsLoadingCachedResults(false);
+
+        if ((workflowStatus === 'completed' || workflowStatus === 'failed') && onComplete) {
+          onComplete(workflowStatus, cachedAnalysisData);
+        }
       }
     };
     

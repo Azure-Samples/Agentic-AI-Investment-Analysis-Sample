@@ -157,11 +157,7 @@ const Index = () => {
 
             {/* Opportunities List */}
             <div className="space-y-4">
-              {filteredOpportunities.length === 0 ? (
-                <Card className="p-12 text-center mb-4">
-                  <p className="text-muted-foreground">No opportunities found</p>
-                </Card>
-              ) : (
+              {filteredOpportunities.length > 0 && (
                 filteredOpportunities.map((opportunity) => (
                   <Card
                     key={opportunity.id}

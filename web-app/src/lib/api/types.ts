@@ -111,7 +111,6 @@ export interface Analysis {
   owner_id: string;
   error_details?: Record<string, any>;
   is_active: boolean;
-  events: EventMessage[];
   created_at: string;
   updated_at: string;
 }
