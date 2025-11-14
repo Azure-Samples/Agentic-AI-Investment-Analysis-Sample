@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { Message, TextMessage } from "./types";
-import type { ChatThread } from "./chatHistoryTypes";
+import type { ChatConversation } from "./chatHistoryTypes";
 
 export interface ChatApiConfig {
   apiBaseUrl: string;
@@ -8,9 +8,9 @@ export interface ChatApiConfig {
   timeout?: number;
 }
 
-export interface SendMessageRequest {
+export interface ChatMessageRequest {
   message: string;
-  threadId: string | null;
+  conversationId: string | null;
   messageHistory: Message[];
   userId?: string;
   context?: Record<string, any>;
@@ -31,16 +31,16 @@ export interface UseChatApiReturn {
   error: string | null;
   abortStream: () => void;
   currentStreamContent: string;
-  onThreadIdReceived?: (threadId: string) => void;
+  onConversationIdReceived?: (conversationId: string) => void;
 }
 
 export const useChatApi = (
   config: ChatApiConfig,
-  currentThreadId: string | null,
+  currentConversationId: string | null,
   messages: Message[],
   onMessageReceived: (message: Message) => void,
   onError?: (error: string) => void,
-  onThreadIdReceived?: (threadId: string) => void
+  onConversationIdReceived?: (conversationId: string) => void
 ): UseChatApiReturn => {
   const [isStreaming, setIsStreaming] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -100,12 +100,12 @@ export const useChatApi = (
 
     try {
       // First, send the message via POST to initiate the stream
-      // Send null if thread ID is temporary (starts with 'temp-')
-      const threadIdToSend = currentThreadId?.startsWith('temp-') ? null : currentThreadId;
+      // Send null if conversation ID is temporary (starts with 'temp-')
+      const conversationIdToSend = currentConversationId?.startsWith('temp-') ? null : currentConversationId;
       
-      const requestBody: SendMessageRequest = {
+      const requestBody: ChatMessageRequest = {
         message: content,
-        threadId: threadIdToSend,
+        conversationId: conversationIdToSend,
         messageHistory: messages,
         context: {}
       };
@@ -123,14 +123,14 @@ export const useChatApi = (
       }
 
       const data = await response.json();
-      const streamId = data.streamId || data.threadId;
-      const returnedThreadId = data.threadId;
+      const streamId = data.streamId;
+      const returnedConversationId = data.conversationId;
 
       setIsLoading(false);
 
-      // Immediately notify about the thread ID so the UI can update
-      if (returnedThreadId && onThreadIdReceived) {
-        onThreadIdReceived(returnedThreadId);
+      // Immediately notify about the conversation ID so the UI can update
+      if (returnedConversationId && onConversationIdReceived) {
+        onConversationIdReceived(returnedConversationId);
       }
 
       // Connect to SSE endpoint
@@ -205,14 +205,14 @@ export const useChatApi = (
       };
 
       // Return the thread ID
-      return returnedThreadId;
+      return returnedConversationId;
 
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : "Failed to send message";
       handleError(errorMessage);
       return null;
     }
-  }, [config.apiBaseUrl, currentThreadId, messages, onMessageReceived, handleError, onThreadIdReceived]);
+  }, [config.apiBaseUrl, currentConversationId, messages, onMessageReceived, handleError, onConversationIdReceived]);
 
   const sendMessageWithPolling = useCallback(async (content: string): Promise<string | null> => {
     setIsLoading(true);
@@ -224,12 +224,12 @@ export const useChatApi = (
     abortControllerRef.current = controller;
 
     try {
-      // Send null if thread ID is temporary (starts with 'temp-')
-      const threadIdToSend = currentThreadId?.startsWith('temp-') ? null : currentThreadId;
+      // Send null if conversation ID is temporary (starts with 'temp-')
+      const conversationIdToSend = currentConversationId?.startsWith('temp-') ? null : currentConversationId;
       
-      const requestBody: SendMessageRequest = {
+      const requestBody: ChatMessageRequest = {
         message: content,
-        threadId: threadIdToSend,
+        conversationId: conversationIdToSend,
         messageHistory: messages,
         context: {}
       };
@@ -248,14 +248,14 @@ export const useChatApi = (
       }
 
       const data = await response.json();
-      const returnedThreadId = data.threadId;
+      const returnedConversationId = data.conversationId;
 
       setIsLoading(false);
       setIsStreaming(false);
 
-      // Immediately notify about the thread ID so the UI can update
-      if (returnedThreadId && onThreadIdReceived) {
-        onThreadIdReceived(returnedThreadId);
+      // Immediately notify about the conversation ID so the UI can update
+      if (returnedConversationId && onConversationIdReceived) {
+        onConversationIdReceived(returnedConversationId);
       }
 
       // Handle different response types
@@ -279,7 +279,7 @@ export const useChatApi = (
       }
 
       // Return the thread ID
-      return returnedThreadId;
+      return returnedConversationId;
 
     } catch (err) {
       if (err instanceof Error && err.name === "AbortError") {
@@ -292,7 +292,7 @@ export const useChatApi = (
     } finally {
       abortControllerRef.current = null;
     }
-  }, [config.apiBaseUrl, currentThreadId, messages, onMessageReceived, handleError, onThreadIdReceived]);
+  }, [config.apiBaseUrl, currentConversationId, messages, onMessageReceived, handleError, onConversationIdReceived]);
 
   const sendMessage = useCallback(async (content: string): Promise<string | null> => {
     if (config.enableSSE !== false) {

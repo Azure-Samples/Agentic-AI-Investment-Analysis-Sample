@@ -1,12 +1,13 @@
 import importlib.metadata
 
 from .analysis_service import AnalysisService
-from .analysis_chat_service import AnalysisChatService
 from .opportunity_service import OpportunityService
 from .user_service import UserService
 from .document_service import DocumentService
 from .document_processing_service import DocumentProcessingService
-from .workflow_events_service import WorkflowEventsService
+from .analysis_workflow_events_service import AnalysisWorkflowEventsService
+from .analysis_workflow_executor_service import AnalysisWorkflowExecutorService
+from .whatif_workflow_executor_service import WhatIfWorkflowExecutorService
 
 try:
     __version__ = importlib.metadata.version(__name__)
@@ -15,10 +16,11 @@ except importlib.metadata.PackageNotFoundError:
 
 __all__ = [
             "AnalysisService",
-            "AnalysisChatService",
             "OpportunityService",
             "UserService",
             "DocumentService",
             "DocumentProcessingService",
-            "WorkflowEventsService",
+            "AnalysisWorkflowEventsService",
+            "AnalysisWorkflowExecutorService",
+            "WhatIfWorkflowExecutorService"
           ]

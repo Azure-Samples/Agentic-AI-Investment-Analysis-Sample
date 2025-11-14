@@ -10,7 +10,7 @@ export { default as ReasoningMessageComponent } from "./ReasoningMessage";
 export { default as HumanFeedbackMessageComponent } from "./HumanFeedbackMessage";
 export { default as ErrorMessageComponent } from "./ErrorMessage";
 export { default as ChatHistoryPanel } from "./ChatHistoryPanel";
-export { default as ChatThreadItem } from "./ChatThreadItem";
+export { default as ChatThreadItem } from "./ChatConversationItem";
 export { useChatApi } from "./useChatApi";
 export * from "./types";
 export * from "./chatHistoryTypes";

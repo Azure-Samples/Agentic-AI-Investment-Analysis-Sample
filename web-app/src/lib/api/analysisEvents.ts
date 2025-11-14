@@ -4,6 +4,8 @@
  * Connects to the analysis event stream and handles reconnections
  */
 
+import { getClientIdForAnalysis } from "@/lib/utils";
+
 export interface EventMessage {
   type: string;
   executor?: string;
@@ -40,7 +42,7 @@ export class AnalysisEventClient {
     
     // Build URL with optional since_sequence parameter for reconnection
     const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8084/api';
-    const eventUrl = `/analysis/${this.opportunityId}/${this.analysisId}/stream`;
+    const eventUrl = `/analysis/${this.opportunityId}/${this.analysisId}/stream/${getClientIdForAnalysis()}`;
     const url = this.lastSequence >= 0 
       ? `${baseURL}${eventUrl}?since_sequence=${this.lastSequence}`
       : `${baseURL}${eventUrl}`;

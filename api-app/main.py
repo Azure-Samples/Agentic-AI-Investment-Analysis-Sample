@@ -9,7 +9,7 @@ import uvicorn
 from app.core.config import settings
 from app.utils.logging import setup_logger
 from app.dependencies import initialize_all, close_all, get_cosmos_client
-from app.routers import opportunity, analysis, chat_api
+from app.routers import opportunity, analysis, chat
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -40,7 +40,7 @@ def initialize_api_application() -> FastAPI:
     # Include routers
     app.include_router(opportunity.router, prefix="/api")
     app.include_router(analysis.router, prefix="/api")
-    app.include_router(chat_api.router, prefix="/api")
+    app.include_router(chat.router, prefix="/api")
 
     # Global exception handler
     @app.exception_handler(Exception)

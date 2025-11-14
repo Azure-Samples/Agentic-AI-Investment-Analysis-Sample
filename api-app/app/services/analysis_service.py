@@ -48,7 +48,7 @@ class AnalysisService:
         analysis_id: str,
         opportunity_id: str,
         owner_id: Optional[str] = None
-    ) -> Optional[Analysis]:
+    ) -> Analysis:
         """Get a single analysis by ID"""
         try:
             analysis = await self.analysis_repo.get_analysis_by_id(analysis_id=analysis_id, 

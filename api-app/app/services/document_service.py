@@ -114,7 +114,8 @@ class DocumentService:
                 mime_type=content_type,
                 size=len(file_content),
                 uploaded_by=uploaded_by,
-                tags=tags or []
+                tags=tags or [],
+                processing_status="completed", # TODO: Default to completed for demo purposes, update once document processing is implemented
             )
             
             created_document = await self.document_repo.create_document(document)

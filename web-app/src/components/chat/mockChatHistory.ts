@@ -1,4 +1,4 @@
-import { ChatThread } from "./chatHistoryTypes";
+import { ChatConversation } from "./chatHistoryTypes";
 import { exampleMessages } from "./exampleMessages";
 import type { Message } from "./types";
 
@@ -8,7 +8,7 @@ const createThread = (
   title: string,
   messages: Message[],
   tags?: string[]
-): ChatThread => {
+): ChatConversation => {
   const lastMessage = messages[messages.length - 1];
   let preview = "";
   
@@ -35,7 +35,7 @@ const createThread = (
   };
 };
 
-export const mockChatThreads: ChatThread[] = [
+export const mockChatThreads: ChatConversation[] = [
   createThread(
     "thread-1",
     "TechStart AI Investment Analysis",

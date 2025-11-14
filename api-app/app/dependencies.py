@@ -4,11 +4,13 @@ from agent_framework import BaseChatClient
 from app.utils.credential import get_azure_credential, get_azure_credential_async
 from app.core.config import settings
 from app.database.cosmos import CosmosDBClient
-
+from app.utils.sse_stream_event_queue import SSEStreamEventQueue
 
 # Global Cosmos DB client instance
 cosmos_client: CosmosDBClient = None
 
+# Global event queue sessions
+_sse_event_queue_sessions: dict[str, SSEStreamEventQueue] = {}
 
 # Dependency to get database connection
 async def get_cosmos_client() -> CosmosDBClient:
@@ -42,11 +44,38 @@ async def get_document_processing_service():
     global cosmos_client
     return DocumentProcessingService(cosmos_client)
 
-async def get_workflow_events_service():
+async def get_analysis_workflow_events_service():
     """Dependency to get WorkflowEventsService"""
-    from app.services.workflow_events_service import WorkflowEventsService
+    from app.services.analysis_workflow_events_service import AnalysisWorkflowEventsService
     global cosmos_client
-    return WorkflowEventsService(cosmos_client)
+    return AnalysisWorkflowEventsService(cosmos_client)
+
+async def get_analysis_workflow_execution_service():
+    """Dependency to get WorkflowEventsService"""
+    from app.services.analysis_workflow_executor_service import AnalysisWorkflowExecutorService
+    return AnalysisWorkflowExecutorService(analysis_service=await get_analysis_service(),
+                                           opportunity_service=await get_opportunity_service(),
+                                           workflow_events_service=await get_analysis_workflow_events_service())
+
+async def get_what_if_workflow_executor_service():
+    """Dependency to get WhatIfWorkflowExecutorService"""
+    from app.services.whatif_workflow_executor_service import WhatIfWorkflowExecutorService
+    return WhatIfWorkflowExecutorService(analysis_service=await get_analysis_service())
+
+async def get_sse_event_queue_for_session(session_id: str):
+    """Get the event queue for a specific session (alias for global queue)"""
+    from app.utils.sse_stream_event_queue import SSEStreamEventQueue
+    global _sse_event_queue_sessions
+    if session_id not in _sse_event_queue_sessions:
+        _sse_event_queue_sessions[session_id] = SSEStreamEventQueue()
+    return _sse_event_queue_sessions[session_id]
+
+async def close_sse_event_queue_for_session(session_id: str):
+    """Close and remove the event queue for a specific session"""
+    global _sse_event_queue_sessions
+    if session_id in _sse_event_queue_sessions:
+        await _sse_event_queue_sessions[session_id].clear_event_queue()
+        del _sse_event_queue_sessions[session_id]
 
 async def get_chat_client() -> BaseChatClient:
     """Dependency to get AzureOpenAIChatClient"""

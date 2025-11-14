@@ -9,11 +9,11 @@ import ChatHistoryPanel from "./ChatHistoryPanel";
 import { exampleMessages, humanFeedbackExamples, markdownMessageExamples, errorMessageExamples } from "./exampleMessages";
 import { mockChatThreads } from "./mockChatHistory";
 import type { Message, TextMessage } from "./types";
-import type { ChatThread } from "./chatHistoryTypes";
+import type { ChatConversation } from "./chatHistoryTypes";
 
 const ChatContainer = () => {
   // Chat history state
-  const [threads, setThreads] = useState<ChatThread[]>(mockChatThreads);
+  const [threads, setThreads] = useState<ChatConversation[]>(mockChatThreads);
   const [currentThreadId, setCurrentThreadId] = useState<string | null>("thread-1");
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
 
@@ -30,11 +30,14 @@ const ChatContainer = () => {
   const scrollAreaRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when messages change
-  useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
-    }
-  }, [messages, isTyping]);
+  // useEffect(() => {
+
+  //   if (!messages || messages.length === 0) return;
+    
+  //   if (messagesEndRef.current) {
+  //     messagesEndRef.current.scrollIntoView({ behavior: "smooth" });
+  //   }
+  // }, [messages]);
 
   const handleSend = async () => {
     if (!input.trim()) return;
@@ -117,7 +120,7 @@ const ChatContainer = () => {
   };
 
   const handleNewChat = () => {
-    const newThread: ChatThread = {
+    const newThread: ChatConversation = {
       id: `thread-${Date.now()}`,
       title: "New Conversation",
       preview: "Start a new investment analysis...",
@@ -166,11 +169,11 @@ const ChatContainer = () => {
     <div className="flex h-[700px]">
       {/* Chat History Panel */}
       <ChatHistoryPanel
-        threads={threads}
-        currentThreadId={currentThreadId}
+        conversations={threads}
+        currentConversationId={currentThreadId}
         isExpanded={isHistoryExpanded}
         onToggle={() => setIsHistoryExpanded(!isHistoryExpanded)}
-        onSelectThread={handleSelectThread}
+        onSelectConversation={handleSelectThread}
         onNewChat={handleNewChat}
       />
 
@@ -211,7 +214,7 @@ const ChatContainer = () => {
               <Button 
                 onClick={() => {
                   // Add a human feedback example
-                  const newMessages = [...messages, humanFeedbackExamples[0]];
+                  const newMessages = [...messages, humanFeedbackExamples[3]];
                   setMessages(newMessages);
                   updateCurrentThread(newMessages);
                 }} 

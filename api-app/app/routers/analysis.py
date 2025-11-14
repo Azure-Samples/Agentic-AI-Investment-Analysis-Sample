@@ -7,11 +7,12 @@ import logging
 import asyncio
 
 from app.core.auth import get_current_active_user
-from app.services import AnalysisService, OpportunityService, WorkflowEventsService
-from app.services.analysis_chat_service import AnalysisChatService
-from app.workflow import WorkflowExecutor, get_event_queue
-from app.dependencies import get_analysis_service, get_opportunity_service, get_workflow_events_service, get_chat_client
-from app.models import Analysis, User, WorkflowEvent
+from app.services import AnalysisService, AnalysisWorkflowEventsService, AnalysisWorkflowExecutorService
+from app.dependencies import (close_sse_event_queue_for_session, get_analysis_service, 
+                              get_sse_event_queue_for_session, 
+                              get_analysis_workflow_execution_service, 
+                              get_analysis_workflow_events_service)
+from app.models import Analysis, User, AnalysisWorkflowEvent
 
 router = APIRouter(prefix="/analysis", tags=["analysis"])
 
@@ -78,30 +79,6 @@ class AnalysisUpdateRequest(BaseModel):
 class AnalysisStartRequest(BaseModel):
     pass  # No additional fields needed for starting
 
-
-class AnalysisCompleteRequest(BaseModel):
-    overall_score: Optional[int] = Field(None, description="Overall investment score (0-100)")
-    agent_results: Optional[Dict[str, Any]] = Field(None, description="Results from each agent")
-    result: Optional[str] = Field(None, description="Final result summary")
-
-
-class AnalysisFailRequest(BaseModel):
-    error_message: Optional[str] = Field(None, description="Error message describing the failure")
-
-
-class ChatMessage(BaseModel):
-    role: str = Field(..., description="Role of the message sender: 'user' or 'assistant'")
-    content: str = Field(..., description="Content of the message")
-
-
-class ChatRequest(BaseModel):
-    message: str = Field(..., description="The user's input message")
-    history: Optional[List[ChatMessage]] = Field(default=None, description="Previous conversation messages")
-
-
-class ChatResponse(BaseModel):
-    message: str = Field(..., description="The AI assistant's response")
-    status: str = Field(default="success", description="Status of the request")
 
 # endregion
 
@@ -207,7 +184,7 @@ async def delete_analysis(
     analysis_id: str,
     soft_delete: bool = Query(True, description="Use soft delete (mark as inactive)"),
     current_user: User = Depends(get_current_active_user),
-    workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
+    workflow_events_service: AnalysisWorkflowEventsService = Depends(get_analysis_workflow_events_service),
     analysis_service: AnalysisService = Depends(get_analysis_service)
 ):
     """Delete an analysis"""
@@ -249,18 +226,24 @@ async def delete_analysis(
 
 # region Analysis Execution and Events
 
-@router.post("/{opportunity_id}/{analysis_id}/start", response_model=AnalysisResponse)
+@router.post("/{opportunity_id}/{analysis_id}/start/{client_id}", response_model=AnalysisResponse)
 async def start_analysis(
+    client_id: str, # path param for session identification, used for creating a distinct event queue. In production this could be a user session ID or similar.
     opportunity_id: str,
     analysis_id: str,
     background_tasks: BackgroundTasks,
     current_user: User = Depends(get_current_active_user),
     analysis_service: AnalysisService = Depends(get_analysis_service),
-    opportunity_service: OpportunityService = Depends(get_opportunity_service),
-    workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
+    execution_service: AnalysisWorkflowExecutorService = Depends(get_analysis_workflow_execution_service),
 ):
     """Start an analysis run with background workflow execution"""
     try:
+        if not client_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="client_id path parameter is required for event streaming"
+            )
+        
         # Mark analysis as started
         analysis = await analysis_service.start_analysis(
             analysis_id=analysis_id,
@@ -273,10 +256,14 @@ async def start_analysis(
                 detail=f"Failed to start. Analysis {analysis_id} not found"
             )
         
+        # Get the event queue for this client/session
+        sse_event_queue = await get_sse_event_queue_for_session(client_id)
+        
         # Execute workflow in background
-        workflow_executor = WorkflowExecutor(analysis_service, opportunity_service, workflow_events_service)
+        workflow_executor_function = execution_service.execute_workflow
         background_tasks.add_task(
-            workflow_executor.execute_workflow,
+            workflow_executor_function,
+            sse_event_queue=sse_event_queue,
             analysis_id=analysis_id,
             opportunity_id=opportunity_id,
             owner_id=current_user.email
@@ -295,8 +282,9 @@ async def start_analysis(
         )
 
 
-@router.get("/{opportunity_id}/{analysis_id}/stream")
+@router.get("/{opportunity_id}/{analysis_id}/stream/{client_id}")
 async def stream_analysis_events(
+    client_id: str, # path param for session identification, used for retrieving the distinct event queue. In production this could be a user session ID or similar.
     opportunity_id: str,
     analysis_id: str,
     since_sequence: Optional[int] = Query(None, description="Get events since this sequence number"),
@@ -310,6 +298,12 @@ async def stream_analysis_events(
     they received to get only new events since that point.
     """
     try:
+        if not client_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="client_id path parameter is required for event streaming"
+            )
+        
         # Verify the analysis exists and user has access
         analysis = await analysis_service.get_analysis_by_id(
             analysis_id=analysis_id,
@@ -322,28 +316,33 @@ async def stream_analysis_events(
                 detail=f"Analysis {analysis_id} not found"
             )
         
+        # Get the event queue for this client/session
+        sse_event_queue = await get_sse_event_queue_for_session(client_id)
+        
+        async def clean_up():
+            logger.info(f"Cleaning up event stream for analysis {analysis_id} and client {client_id}")
+            await close_sse_event_queue_for_session(client_id)
+        
         async def event_generator() -> AsyncGenerator[str, None]:
             """Generate SSE events for the analysis"""
-            event_queue = get_event_queue()
             
             try:
                 # First, send any historical events (if reconnecting)
                 if since_sequence is not None:
                     logger.info(f"Client reconnecting to analysis {analysis_id}, fetching events since {since_sequence}")
-                    historical_events = await event_queue.get_events(
-                        analysis_id=analysis_id,
+                    historical_events = await sse_event_queue.get_events(
                         since_sequence=since_sequence
                     )
                     for event in historical_events:
                         yield event.to_sse_format()
                 else:
                     # Send all existing events
-                    all_events = await event_queue.get_events(analysis_id=analysis_id)
+                    all_events = await sse_event_queue.get_events()
                     for event in all_events:
                         yield event.to_sse_format()
                 
                 # Register for live updates
-                listener_queue = await event_queue.register_listener(analysis_id)
+                listener_queue = await sse_event_queue.register_listener()
                 
                 try:
                     # Stream live events
@@ -362,7 +361,7 @@ async def stream_analysis_events(
                     raise
                 finally:
                     # Cleanup listener
-                    await event_queue.unregister_listener(analysis_id, listener_queue)
+                    await sse_event_queue.unregister_listener(listener_queue)
                     
             except Exception as e:
                 logger.error(f"Error in event stream for analysis {analysis_id}: {str(e)}")
@@ -370,6 +369,9 @@ async def stream_analysis_events(
                 # Send error event
                 error_data = f'data: {{"type": "error", "message": "Stream error: {str(e)}", "data":  {{"error": "{str(e)}", "error_type": "{type(e).__name__}"}} , "timestamp": "{datetime.now(timezone.utc).isoformat()}"}}\n\n'
                 yield error_data
+                
+            finally:
+                await clean_up()
         
         return StreamingResponse(
             event_generator(),
@@ -393,12 +395,12 @@ async def stream_analysis_events(
         )
 
 
-@router.get("/{opportunity_id}/{analysis_id}/events", response_model=List[WorkflowEvent])
+@router.get("/{opportunity_id}/{analysis_id}/events", response_model=List[AnalysisWorkflowEvent])
 async def fetch_analysis_events(
     opportunity_id: str,
     analysis_id: str,
     current_user: User = Depends(get_current_active_user),
-    workflow_events_service: WorkflowEventsService = Depends(get_workflow_events_service),
+    workflow_events_service: AnalysisWorkflowEventsService = Depends(get_analysis_workflow_events_service),
 ):
     """Fetch all events for a specific analysis"""
     
@@ -417,94 +419,4 @@ async def fetch_analysis_events(
             detail=f"Failed to fetch events for analysis: {str(e)}"
         )
         
-# endregion
-
-
-# region What If Analysis Chat
-
-@router.post("/{opportunity_id}/{analysis_id}/chat")
-async def chat_with_analysis(
-    opportunity_id: str,
-    analysis_id: str,
-    request: ChatRequest,
-    current_user: User = Depends(get_current_active_user),
-    analysis_service: AnalysisService = Depends(get_analysis_service),
-    opportunity_service: OpportunityService = Depends(get_opportunity_service),
-    chat_client = Depends(get_chat_client)
-):
-    """
-    Chat endpoint for 'what-if' analysis discussions with SSE streaming
-    
-    This endpoint allows users to ask questions about their investment analysis
-    and explore hypothetical scenarios using an AI assistant powered by agent framework.
-    
-    The response is streamed using Server-Sent Events (SSE) for real-time interaction.
-    
-    Events:
-    - start: Initial event when processing begins
-    - message: Chunks of the AI response as they're generated
-    - error: Error information if something goes wrong
-    - done: Completion event with the full message
-    """
-    try:
-        # Create chat service instance
-        chat_service = AnalysisChatService(
-            chat_client=chat_client,
-            analysis_service=analysis_service,
-            opportunity_service=opportunity_service
-        )
-        
-        # Convert history to dict format if provided
-        message_history = None
-        if request.history:
-            message_history = [
-                {"role": msg.role, "content": msg.content}
-                for msg in request.history
-            ]
-        
-        # Stream the chat response
-        async def event_generator() -> AsyncGenerator[str, None]:
-            """Generate SSE events for the chat response"""
-            try:
-                async for event in chat_service.stream_chat_message(
-                    user_message=request.message,
-                    analysis_id=analysis_id,
-                    opportunity_id=opportunity_id,
-                    owner_id=current_user.email,
-                    message_history=message_history
-                ):
-                    yield event
-                    
-            except Exception as e:
-                logger.error(f"Error in chat stream generator: {str(e)}")
-                # Send error event
-                import json
-                error_event = f"event: error\ndata: {json.dumps({'message': str(e), 'error_type': type(e).__name__})}\n\n"
-                yield error_event
-                # Send done event
-                yield f"event: done\ndata: {{}}\n\n"
-        
-        logger.info(f"Starting chat stream for analysis {analysis_id}")
-        
-        return StreamingResponse(
-            event_generator(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "X-Accel-Buffering": "no",  # Disable buffering in nginx
-                "Access-Control-Allow-Origin": "*",  # Allow CORS for SSE
-                "Access-Control-Allow-Credentials": "true"
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error in chat endpoint for analysis {analysis_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to process chat message: {str(e)}"
-        )
-
 # endregion
