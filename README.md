@@ -1,6 +1,6 @@
 # Agentic AI Investment Analysis Sample
 
-An advanced AI-powered investment analysis platform that leverages multi-agent workflows to perform comprehensive analysis of investment opportunities. This sample application demonstrates how to build sophisticated agentic AI systems using the Microsoft Agent Framework, Azure services, and modern web technologies.
+An advanced AI-powered investment analysis platform that leverages multi-agent workflows to perform comprehensive analysis of investment opportunities. This sample application demonstrates how to build sophisticated agentic AI systems using the <img src="./_assets/agentframework.svg" alt="Microsoft Agent Framework" style="width:16px;height:16px" /> [Microsoft Agent Framework](https://learn.microsoft.com/en-us/agent-framework), Azure services, and modern web technologies.
 
 <p align="center">
     <picture>
