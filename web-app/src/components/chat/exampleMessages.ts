@@ -12,8 +12,13 @@ export const exampleMessages: Message[] = [
     type: "text",
     content: "Hello! I'll analyze this investment opportunity using our multi-agent system. Let me walk you through the process."
   },
-  
-  // 2. Event: Starting analysis
+  // 2. User question
+  {
+    role: "user",
+    type: "text",
+    content: "What if the market growth rate is only 10% instead of 18%?"
+  },
+  // 3. Event: Starting analysis
   {
     role: "assistant",
     type: "event",
@@ -21,101 +26,32 @@ export const exampleMessages: Message[] = [
     status: "in_progress",
     description: "Initiating comprehensive analysis across multiple dimensions"
   },
-  
-  // 3. Agent Output: Market Analysis
+  // Choice Request Example
   {
     role: "assistant",
-    type: "agent_output",
-    agentName: "Market Analysis Agent",
-    output: "The target market demonstrates strong fundamentals with a projected CAGR of 18% over the next 5 years. Key growth drivers include digital transformation and regulatory tailwinds in the sector.",
-    confidence: 0.87,
-    metadata: {
-      "Data Sources": 8,
-      "Market Size": "$4.2B",
-      "Competitors Analyzed": 12
-    }
-  },
-  
-  // 4. Reasoning: Financial evaluation
-  {
-    role: "assistant",
-    type: "reasoning",
-    steps: [
+    type: "human_feedback",
+    feedbackType: "choice",
+    question: "Select Analysis Depth",
+    description: "How would you like me to proceed with the financial analysis?",
+    choices: [
       {
-        step: 1,
-        description: "Analyze historical revenue trends",
-        result: "45% YoY growth over past 3 years"
+        id: "quick",
+        label: "Quick Analysis",
+        description: "High-level overview with key metrics (2-3 minutes)"
       },
       {
-        step: 2,
-        description: "Evaluate cost structure and margins",
-        result: "Gross margin of 68%, improving by 3% annually"
+        id: "standard",
+        label: "Standard Analysis",
+        description: "Comprehensive analysis with detailed breakdowns (5-7 minutes)"
       },
       {
-        step: 3,
-        description: "Assess cash flow and burn rate",
-        result: "Positive cash flow in last 2 quarters"
-      },
-      {
-        step: 4,
-        description: "Compare valuation to industry benchmarks",
-        result: "Valuation at 0.8x industry average"
+        id: "deep",
+        label: "Deep Dive Analysis",
+        description: "Exhaustive analysis including stress testing and Monte Carlo simulations (15-20 minutes)"
       }
     ],
-    conclusion: "Strong financial performance with attractive valuation metrics. The company shows sustainable growth with improving unit economics."
+    requestId: "choice-001"
   },
-  
-  // 5. Event: Completed sub-analysis
-  {
-    role: "assistant",
-    type: "event",
-    eventName: "Financial Analysis",
-    status: "completed",
-    description: "Revenue, profitability, and cash flow analysis completed",
-    details: "Analyzed 5 years of financial statements and projections"
-  },
-  
-  // 6. Agent Output: Risk Assessment
-  {
-    role: "assistant",
-    type: "agent_output",
-    agentName: "Risk Assessment Agent",
-    output: "Overall risk rating: Medium. Primary risks include market concentration (35% revenue from top 3 clients) and competitive pressures. However, strong IP portfolio and customer retention rate of 95% mitigate these concerns.",
-    confidence: 0.92,
-    metadata: {
-      "Risk Factors Identified": 7,
-      "Mitigation Strategies": 5,
-      "Regulatory Compliance": "98%"
-    }
-  },
-  
-  // 7. Card: Summary Results
-  {
-    role: "assistant",
-    type: "card",
-    title: "Investment Analysis Summary",
-    content: "Comprehensive analysis completed across financial, market, and risk dimensions",
-    metrics: [
-      { label: "Overall Score", value: 82, trend: "up" },
-      { label: "ROI Projection", value: "28%", trend: "up" },
-      { label: "Risk Level", value: "Medium", trend: "neutral" },
-      { label: "Confidence", value: "89%", trend: "up" }
-    ],
-    data: {
-      "Recommendation": "INVEST",
-      "Target Allocation": "15% of portfolio",
-      "Investment Horizon": "3-5 years",
-      "Exit Strategy": "Strategic acquisition or IPO"
-    }
-  },
-  
-  // 8. User question
-  {
-    role: "user",
-    type: "text",
-    content: "What if the market growth rate is only 10% instead of 18%?"
-  },
-  
   // 9. Reasoning: Scenario analysis
   {
     role: "assistant",
@@ -144,7 +80,183 @@ export const exampleMessages: Message[] = [
     ],
     conclusion: "Even with conservative 10% market growth, the opportunity remains attractive with adjusted ROI of 21% vs original 28%."
   },
-  
+  // Multiple Choice for Strategy
+  {
+    role: "assistant",
+    type: "human_feedback",
+    feedbackType: "choice",
+    question: "Choose Investment Strategy",
+    description: "Based on the analysis, I've identified three viable investment strategies. Which approach would you prefer?",
+    choices: [
+      {
+        id: "aggressive",
+        label: "Aggressive Growth",
+        description: "Higher allocation (20%), targeting 35%+ ROI with increased risk exposure"
+      },
+      {
+        id: "balanced",
+        label: "Balanced Approach",
+        description: "Moderate allocation (15%), targeting 28% ROI with medium risk"
+      },
+      {
+        id: "conservative",
+        label: "Conservative Entry",
+        description: "Lower allocation (8%), targeting 18% ROI with minimized risk"
+      },
+      {
+        id: "staged",
+        label: "Staged Investment",
+        description: "Start with 5%, increase to 15% based on milestone achievements"
+      }
+    ],
+    requestId: "choice-002"
+  },
+  // 3. Agent Output: Market Analysis
+  {
+    role: "assistant",
+    type: "agent_output",
+    agentName: "Market Analysis Agent",
+    output: "The target market demonstrates strong fundamentals with a projected CAGR of 18% over the next 5 years. Key growth drivers include digital transformation and regulatory tailwinds in the sector.",
+    confidence: 0.87,
+    metadata: {
+      "Data Sources": 8,
+      "Market Size": "$4.2B",
+      "Competitors Analyzed": 12
+    }
+  },
+  // 6. Agent Output: Risk Assessment
+  {
+    role: "assistant",
+    type: "agent_output",
+    agentName: "Risk Assessment Agent",
+    output: "Overall risk rating: Medium. Primary risks include market concentration (35% revenue from top 3 clients) and competitive pressures. However, strong IP portfolio and customer retention rate of 95% mitigate these concerns.",
+    confidence: 0.92,
+    metadata: {
+      "Risk Factors Identified": 7,
+      "Mitigation Strategies": 5,
+      "Regulatory Compliance": "98%"
+    }
+  },
+  // 5. Event: Completed sub-analysis
+  {
+    role: "assistant",
+    type: "event",
+    eventName: "Financial Analysis",
+    status: "completed",
+    description: "Revenue, profitability, and cash flow analysis completed",
+    details: "Analyzed 5 years of financial statements and projections"
+  },
+  {
+    role: "assistant",
+    type: "markdown_text",
+    title: "Detailed Investment Analysis Report",
+    content: `# Investment Analysis: TechStart AI Solutions
+
+## Executive Summary
+
+TechStart AI Solutions presents a compelling investment opportunity in the rapidly growing artificial intelligence sector. Our comprehensive analysis indicates strong fundamentals with moderate risk exposure.
+
+### Key Highlights
+
+- **Valuation:** $45M pre-money
+- **Revenue Growth:** 180% YoY
+- **Market Opportunity:** $12B TAM
+- **Team Experience:** 45+ years combined in AI/ML
+
+## Financial Analysis
+
+### Revenue Performance
+
+The company has demonstrated exceptional revenue growth over the past three years:
+
+- **2023:** $2.1M (+180% YoY)
+- **2022:** $750K (+220% YoY)  
+- **2021:** $234K (Initial revenue)
+
+### Profitability Metrics
+
+Current burn rate is well-managed at $180K/month with 18 months of runway remaining. The company projects profitability within 24 months based on:
+
+1. Expanding enterprise customer base
+2. Improved gross margins (currently 68%)
+3. Operational efficiency gains
+
+## Market Analysis
+
+### Target Market
+
+The AI solutions market for enterprise customers is experiencing rapid expansion:
+
+- **Current Market Size:** $4.2B
+- **Projected CAGR:** 28.5% (2024-2029)
+- **Target Segment:** Mid-market enterprises ($50M-$500M revenue)
+
+### Competitive Landscape
+
+**Key Competitors:**
+- DataCorp AI (Market Leader, 23% share)
+- IntelliSoft Solutions (Fast follower, 15% share)
+- CloudMind Systems (Niche player, 8% share)
+
+**Competitive Advantages:**
+- Proprietary ML algorithms (2 patents pending)
+- 40% faster implementation time
+- Superior customer retention (94% vs. industry avg 78%)
+
+## Risk Assessment
+
+### High-Priority Risks
+
+1. **Market Risk:** Increasing competition from well-funded startups
+2. **Technology Risk:** Rapid AI advancement may obsolete current platform
+3. **Key Person Risk:** Heavy reliance on CTO for technical innovation
+
+### Mitigation Strategies
+
+- Accelerate R&D investment (20% of budget)
+- Build redundant technical leadership
+- Establish strategic partnerships with major cloud providers
+
+## Investment Terms
+
+### Proposed Structure
+
+- **Investment Amount:** $8M Series A
+- **Valuation:** $45M pre-money, $53M post-money
+- **Equity Stake:** 15.1%
+- **Board Seat:** Yes (investor director)
+- **Liquidation Preference:** 1x non-participating
+
+### Key Conditions
+
+1. Hiring of CFO within 90 days
+2. Implementation of financial controls
+3. Quarterly board reporting
+4. Right of first refusal on Series B
+
+## Recommendation
+
+**Rating:** INVEST with conditions
+
+We recommend proceeding with this investment opportunity subject to the following:
+
+- Due diligence verification of customer contracts
+- Technical audit of IP and codebase
+- Reference checks on leadership team
+- Legal review of cap table and prior agreements
+
+**Expected Returns:**
+- Base Case: 3.2x MOIC over 5 years
+- Bull Case: 6.5x MOIC over 4 years  
+- Bear Case: 1.1x MOIC over 6 years
+
+---
+
+*Report prepared by AI Investment Analysis System*  
+*Date: November 11, 2025*
+*Confidence Level: High (87%)*`,
+    snippetLength: 200
+  },
   // 10. Card: Updated scenario results
   {
     role: "assistant",
@@ -162,6 +274,26 @@ export const exampleMessages: Message[] = [
       "Target Allocation": "12% of portfolio",
       "Sensitivity": "Moderate to market conditions",
       "Adjusted Valuation": "$24M vs $28M base case"
+    }
+  },
+  
+  // 7. Card: Summary Results
+  {
+    role: "assistant",
+    type: "card",
+    title: "Investment Analysis Summary",
+    content: "Comprehensive analysis completed across financial, market, and risk dimensions",
+    metrics: [
+      { label: "Overall Score", value: 82, trend: "up" },
+      { label: "ROI Projection", value: "28%", trend: "up" },
+      { label: "Risk Level", value: "Medium", trend: "neutral" },
+      { label: "Confidence", value: "89%", trend: "up" }
+    ],
+    data: {
+      "Recommendation": "INVEST",
+      "Target Allocation": "15% of portfolio",
+      "Investment Horizon": "3-5 years",
+      "Exit Strategy": "Strategic acquisition or IPO"
     }
   },
   

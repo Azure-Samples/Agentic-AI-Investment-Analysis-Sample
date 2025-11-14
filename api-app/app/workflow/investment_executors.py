@@ -196,7 +196,7 @@ class AnalysisAggregator(Executor):
         self._expert_ids = expert_ids
 
     @handler
-    async def aggregate(self, results: list[AnalystResult], ctx: WorkflowContext[Never, list[AnalystResult]]) -> None:
+    async def aggregate(self, results: list[AnalystResult], ctx: WorkflowContext[list[AnalystResult], Never]) -> None:
         """Aggregate responses from expert agents into a consolidated analysis."""
         
         await ctx.send_message(results)

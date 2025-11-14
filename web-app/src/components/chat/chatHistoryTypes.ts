@@ -1,6 +1,6 @@
 import { Message } from "./types";
 
-export interface ChatThread {
+export interface ChatConversation {
   id: string;
   title: string;
   preview: string;
@@ -11,7 +11,7 @@ export interface ChatThread {
 }
 
 export interface ChatHistoryState {
-  threads: ChatThread[];
-  currentThreadId: string | null;
+  conversations: ChatConversation[];
+  currentConversationId: string | null;
   isExpanded: boolean;
 }

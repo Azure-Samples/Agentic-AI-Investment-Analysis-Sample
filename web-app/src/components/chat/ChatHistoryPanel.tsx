@@ -3,42 +3,42 @@ import { ChevronLeft, ChevronRight, Plus, Search, ChevronDown, ChevronUp } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { ChatThread } from "./chatHistoryTypes";
-import ChatThreadItem from "./ChatThreadItem";
+import { ChatConversation } from "./chatHistoryTypes";
+import ChatConversationItem from "./ChatConversationItem";
 
 interface ChatHistoryPanelProps {
-  threads: ChatThread[];
-  currentThreadId: string | null;
+  conversations: ChatConversation[];
+  currentConversationId: string | null;
   isExpanded: boolean;
   onToggle: () => void;
-  onSelectThread: (threadId: string) => void;
+  onSelectConversation: (conversationId: string) => void;
   onNewChat: () => void;
 }
 
 const ChatHistoryPanel = ({
-  threads,
-  currentThreadId,
+  conversations,
+  currentConversationId,
   isExpanded,
   onToggle,
-  onSelectThread,
+  onSelectConversation,
   onNewChat,
 }: ChatHistoryPanelProps) => {
   const [searchQuery, setSearchQuery] = useState("");
-  const [showAllThreads, setShowAllThreads] = useState(false);
+  const [showAllConversations, setShowAllConversations] = useState(false);
 
-  const filteredThreads = threads.filter(
-    (thread) =>
-      thread.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      thread.preview.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      thread.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
+  const filteredConversations = conversations?.filter(
+    (conversation) =>
+      conversation.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conversation.preview.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      conversation.tags?.some((tag) => tag.toLowerCase().includes(searchQuery.toLowerCase()))
   );
 
-  // Show only last 5 threads unless expanded or searching
-  const displayThreads = searchQuery || showAllThreads 
-    ? filteredThreads 
-    : filteredThreads.slice(0, 5);
+  // Show only last 5 conversations unless expanded or searching
+  const displayConversations = searchQuery || showAllConversations
+    ? filteredConversations 
+    : filteredConversations.slice(0, 5);
   
-  const hasMoreThreads = filteredThreads.length > 5;
+  const hasMoreConversations = filteredConversations.length > 5;
 
   return (
     <div
@@ -107,13 +107,13 @@ const ChatHistoryPanel = ({
           {/* Thread List - Scrollable */}
           <ScrollArea className="flex-1">
             <div className="space-y-1.5 pr-3">
-              {displayThreads.length > 0 ? (
-                displayThreads.map((thread) => (
-                  <ChatThreadItem
-                    key={thread.id}
-                    thread={thread}
-                    isActive={thread.id === currentThreadId}
-                    onClick={() => onSelectThread(thread.id)}
+              {displayConversations.length > 0 ? (
+                displayConversations.map((conversation) => (
+                  <ChatConversationItem
+                    key={conversation.id}
+                    conversation={conversation}
+                    isActive={conversation.id === currentConversationId}
+                    onClick={() => onSelectConversation(conversation.id)}
                   />
                 ))
               ) : (
@@ -124,14 +124,14 @@ const ChatHistoryPanel = ({
             </div>
 
             {/* Show More/Less Button */}
-            {hasMoreThreads && !searchQuery && (
+            {hasMoreConversations && !searchQuery && (
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => setShowAllThreads(!showAllThreads)}
+                onClick={() => setShowAllConversations(!showAllConversations)}
                 className="mt-2 w-full h-8 text-xs"
               >
-                {showAllThreads ? (
+                {showAllConversations ? (
                   <>
                     <ChevronUp className="h-3 w-3 mr-1" />
                     Show Less
@@ -139,7 +139,7 @@ const ChatHistoryPanel = ({
                 ) : (
                   <>
                     <ChevronDown className="h-3 w-3 mr-1" />
-                    Show {filteredThreads.length - 5} More
+                    Show {filteredConversations.length - 5} More
                   </>
                 )}
               </Button>
@@ -148,7 +148,7 @@ const ChatHistoryPanel = ({
 
           {/* Footer Stats - More Compact */}
           <div className="mt-3 pt-3 border-t text-xs text-muted-foreground text-center flex-shrink-0">
-            {threads.length} conversation{threads.length !== 1 ? "s" : ""}
+            {conversations.length} conversation{conversations.length !== 1 ? "s" : ""}
           </div>
         </div>
       )}

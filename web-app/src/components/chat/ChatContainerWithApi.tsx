@@ -8,7 +8,7 @@ import ChatMessage from "./ChatMessage";
 import ChatHistoryPanel from "./ChatHistoryPanel";
 import { useChatApi } from "./useChatApi";
 import type { Message, TextMessage } from "./types";
-import type { ChatThread } from "./chatHistoryTypes";
+import type { ChatConversation } from "./chatHistoryTypes";
 
 export interface ChatContainerProps {
   /**
@@ -20,9 +20,9 @@ export interface ChatContainerProps {
     timeout?: number;
   };
   /**
-   * Initial threads (optional)
+   * Initial conversations (optional)
    */
-  initialThreads?: ChatThread[];
+  initialConversations?: ChatConversation[];
   /**
    * Initial messages (optional)
    */
@@ -31,13 +31,13 @@ export interface ChatContainerProps {
 
 const ChatContainerWithApi = ({
   apiConfig,
-  initialThreads = [],
+  initialConversations = [],
   initialMessages = []
 }: ChatContainerProps) => {
-  // Chat history state
-  const [threads, setThreads] = useState<ChatThread[]>(initialThreads);
-  const [currentThreadId, setCurrentThreadId] = useState<string | null>(
-    initialThreads.length > 0 ? initialThreads[0].id : null
+  // Chat conversation history state
+  const [conversations, setConversations] = useState<ChatConversation[]>(initialConversations);
+  const [currentConversationId, setCurrentConversationId] = useState<string | null>(
+    initialConversations.length > 0 ? initialConversations[0].id : null
   );
   const [isHistoryExpanded, setIsHistoryExpanded] = useState(true);
 
@@ -49,19 +49,19 @@ const ChatContainerWithApi = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   
-  // Ref to track current thread ID for callbacks (avoids stale closures)
-  const currentThreadIdRef = useRef<string | null>(currentThreadId);
+  // Ref to track current conversation ID for callbacks (avoids stale closures)
+  const currentConversationIdRef = useRef<string | null>(currentConversationId);
   
   // Keep ref in sync with state
   useEffect(() => {
-    currentThreadIdRef.current = currentThreadId;
-  }, [currentThreadId]);
+    currentConversationIdRef.current = currentConversationId;
+  }, [currentConversationId]);
 
   // API integration
-  const updateCurrentThreadWithMessages = useCallback((threadId: string, updatedMessages: Message[]) => {
-    setThreads(prev =>
-      prev.map(thread => {
-        if (thread.id === threadId) {
+  const updateCurrentConversationWithMessages = useCallback((conversationId: string, updatedMessages: Message[]) => {
+    setConversations(prev =>
+      prev.map(conversation => {
+        if (conversation.id === conversationId) {
             let preview = "";
             if (updatedMessages.length > 0) {
                 const lastMessage = updatedMessages[updatedMessages.length - 1];
@@ -76,14 +76,14 @@ const ChatContainerWithApi = ({
             }
 
           return {
-            ...thread,
+            ...conversation,
             messages: updatedMessages,
             messageCount: updatedMessages.length,
             preview,
             timestamp: new Date()
           };
         }
-        return thread;
+        return conversation;
       })
     );
   }, []);
@@ -92,46 +92,46 @@ const ChatContainerWithApi = ({
   const onMessageReceived = useCallback((message: Message) => {
     setMessages(prev => {
       const updatedMessages = [...prev, message];
-      // Update the thread with the new messages using the current thread ID from ref
-      if (currentThreadIdRef.current) {
-        updateCurrentThreadWithMessages(currentThreadIdRef.current, updatedMessages);
+      // Update the conversation with the new messages using the current conversation ID from ref
+      if (currentConversationIdRef.current) {
+        updateCurrentConversationWithMessages(currentConversationIdRef.current, updatedMessages);
       }
       return updatedMessages;
     });
-  }, [updateCurrentThreadWithMessages]);
+  }, [updateCurrentConversationWithMessages]);
 
   // Handle API errors
   const onApiError = useCallback((errorMessage: string) => {
     console.error("API Error:", errorMessage);
   }, []);
 
-  // Handle thread ID received from API
-  const onThreadIdReceived = useCallback((threadId: string) => {
-    // Update thread ID immediately when received from backend
-    setCurrentThreadId(prevThreadId => {
-      const isNewThread = prevThreadId === null || prevThreadId.startsWith('temp-');
+  // Handle conversation ID received from API
+  const onConversationIdReceived = useCallback((conversationId: string) => {
+    // Update conversation ID immediately when received from backend
+    setCurrentConversationId(prevConversationId => {
+      const isNewConversation = prevConversationId === null || prevConversationId.startsWith('temp-');
       
-      // If this is a new thread, replace the temp thread ID with the real one
-      if (isNewThread && prevThreadId) {
-        setThreads(prev => prev.map(thread => {
-          if (thread.id === prevThreadId || thread.id.startsWith('temp-')) {
-            return { ...thread, id: threadId };
+      // If this is a new conversation, replace the temp conversation ID with the real one
+      if (isNewConversation && prevConversationId) {
+        setConversations(prev => prev.map(conversation => {
+          if (conversation.id === prevConversationId || conversation.id.startsWith('temp-')) {
+            return { ...conversation, id: conversationId };
           }
-          return thread;
+          return conversation;
         }));
       }
       
-      return threadId;
+      return conversationId;
     });
   }, []);
 
   const chatApi = useChatApi(
     apiConfig,
-    currentThreadId,
+    currentConversationId,
     messages,
     onMessageReceived,
     onApiError,
-    onThreadIdReceived
+    onConversationIdReceived
   );
 
   // Auto-scroll to bottom when messages change
@@ -156,11 +156,11 @@ const ChatContainerWithApi = ({
     setMessages(newMessages);
     setInput("");
 
-    // If no thread exists yet, create a temporary one
-    if (currentThreadId === null) {
-      const tempThreadId = `temp-${Date.now()}`;
-      const newThread: ChatThread = {
-        id: tempThreadId,
+    // If no conversation exists yet, create a temporary one
+    if (currentConversationId === null) {
+      const tempConversationId = `temp-${Date.now()}`;
+      const newConversation: ChatConversation = {
+        id: tempConversationId,
         title: "New Conversation",
         preview: input.substring(0, 100),
         timestamp: new Date(),
@@ -168,11 +168,11 @@ const ChatContainerWithApi = ({
         messages: newMessages,
         tags: ["New"]
       };
-      setThreads(prev => [newThread, ...prev]);
-      setCurrentThreadId(tempThreadId);
+      setConversations(prev => [newConversation, ...prev]);
+      setCurrentConversationId(tempConversationId);
     }
     
-    // Send via API - thread ID will be received via onThreadIdReceived callback
+    // Send via API - conversation ID will be received via onConversationIdReceived callback
     await chatApi.sendMessage(input);
   };
 
@@ -181,9 +181,9 @@ const ChatContainerWithApi = ({
     setMessages([]);
     setInput("");
     
-    // Clear the current thread messages
-    if (currentThreadId) {
-      updateCurrentThreadWithMessages(currentThreadId, []);
+    // Clear the current conversation messages
+    if (currentConversationId) {
+      updateCurrentConversationWithMessages(currentConversationId, []);
     }
     
     // Abort any ongoing streams
@@ -214,8 +214,8 @@ const ChatContainerWithApi = ({
 
     setMessages(prev => {
       const updatedMessages = [...prev, confirmationMessage];
-      if (currentThreadIdRef.current) {
-        updateCurrentThreadWithMessages(currentThreadIdRef.current, updatedMessages);
+      if (currentConversationIdRef.current) {
+        updateCurrentConversationWithMessages(currentConversationIdRef.current, updatedMessages);
       }
       return updatedMessages;
     });
@@ -225,11 +225,11 @@ const ChatContainerWithApi = ({
 
   // History panel handlers
   // Handle thread selection
-  const handleSelectThread = (threadId: string) => {
-    const thread = threads.find(t => t.id === threadId);
-    if (thread) {
-      setCurrentThreadId(threadId);
-      setMessages(thread.messages);
+  const handleSelectConversation = (conversationId: string) => {
+    const selectedConversation = conversations.find(t => t.id === conversationId);
+    if (selectedConversation) {
+      setCurrentConversationId(conversationId);
+      setMessages(selectedConversation.messages);
     }
   };
 
@@ -243,9 +243,9 @@ const ChatContainerWithApi = ({
     };
 
     // Create a temporary thread with temp ID
-    const tempThreadId = `temp-${Date.now()}`;
-    const newThread: ChatThread = {
-      id: tempThreadId,
+    const tempConversationId = `temp-${Date.now()}`;
+    const newConversation: ChatConversation = {
+      id: tempConversationId,
       title: "New Conversation",
       preview: "Start a new investment analysis...",
       timestamp: new Date(),
@@ -254,11 +254,11 @@ const ChatContainerWithApi = ({
       tags: ["New"]
     };
 
-    setThreads(prev => [newThread, ...prev]);
+    setConversations(prev => [newConversation, ...prev]);
     // Set to temp ID so the new thread shows as active in the UI
     // Backend will still create a new thread because it receives null on first message
-    setCurrentThreadId(tempThreadId);
-    setMessages(newThread.messages);
+    setCurrentConversationId(tempConversationId);
+    setMessages(newConversation.messages);
     setInput("");
   };
 
@@ -268,11 +268,11 @@ const ChatContainerWithApi = ({
     <div className="flex h-[700px]">
       {/* Chat History Panel */}
       <ChatHistoryPanel
-        threads={threads}
-        currentThreadId={currentThreadId}
+        conversations={conversations}
+        currentConversationId={currentConversationId}
         isExpanded={isHistoryExpanded}
         onToggle={() => setIsHistoryExpanded(!isHistoryExpanded)}
-        onSelectThread={handleSelectThread}
+        onSelectConversation={handleSelectConversation}
         onNewChat={handleNewChat}
       />
 
@@ -284,7 +284,7 @@ const ChatContainerWithApi = ({
             <div className="flex items-center gap-2">
               <Bot className="h-4 w-4 text-primary" />
               <h3 className="text-base font-semibold text-foreground line-clamp-1">
-                {threads.find(t => t.id === currentThreadId)?.title || "AI What-If Analysis"}
+                {conversations.find(t => t.id === currentConversationId)?.title || "AI What-If Analysis"}
               </h3>
               {chatApi.isStreaming && (
                 <Loader2 className="h-4 w-4 text-primary animate-spin" />

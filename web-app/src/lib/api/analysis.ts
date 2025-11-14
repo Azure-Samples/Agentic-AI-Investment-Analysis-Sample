@@ -40,8 +40,8 @@ export async function createAnalysis(data: AnalysisCreateRequest): Promise<Analy
 /**
  * Start an analysis run
  */
-export async function startAnalysis(opportunityId: string, analysisId: string): Promise<Analysis> {
-  return apiClient.post<Analysis>(`/analysis/${opportunityId}/${analysisId}/start`, {});
+export async function startAnalysis(clientId:string, opportunityId: string, analysisId: string): Promise<Analysis> {
+  return apiClient.post<Analysis>(`/analysis/${opportunityId}/${analysisId}/start/${clientId}`, {});
 }
 
 /**

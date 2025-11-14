@@ -1,5 +1,5 @@
 import type { Message } from "./types";
-import type { ChatThread } from "./chatHistoryTypes";
+import type { ChatConversation } from "./chatHistoryTypes";
 
 export interface ApiConfig {
   baseUrl: string;
@@ -14,16 +14,16 @@ export interface CreateThreadRequest {
 }
 
 export interface CreateThreadResponse {
-  thread: ChatThread;
+  thread: ChatConversation;
   threadId: string;
 }
 
 export interface GetThreadResponse {
-  thread: ChatThread;
+  thread: ChatConversation;
 }
 
 export interface ListThreadsResponse {
-  threads: ChatThread[];
+  threads: ChatConversation[];
   total: number;
   page: number;
   pageSize: number;
@@ -116,7 +116,7 @@ export class ChatApiService {
    */
   async updateThread(
     threadId: string,
-    updates: Partial<ChatThread>
+    updates: Partial<ChatConversation>
   ): Promise<GetThreadResponse> {
     const response = await this.fetch(`/chat/threads/${threadId}`, {
       method: "PATCH",

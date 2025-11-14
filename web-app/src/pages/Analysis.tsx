@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import * as analysisApi from "@/lib/api/analysis";
 import * as opportunitiesApi from "@/lib/api/opportunities";
 import * as documentsApi from "@/lib/api/documents";
+import { getClientIdForAnalysis } from "@/lib/utils";
 import type { Analysis as AnalysisType, Opportunity, ProcessingStatistics } from "@/lib/api/types";
 
 const Analysis = () => {
@@ -35,7 +36,7 @@ const Analysis = () => {
   const [opportunity, setOpportunity] = useState<Opportunity | null>(null);
   const [analyses, setAnalyses] = useState<AnalysisType[]>([]);
   const [processingStats, setProcessingStats] = useState<ProcessingStatistics | null>(null);
-  
+    
   // UI states
   const [selectedRunId, setSelectedRunId] = useState<string>("");
   const [isNewRunDialogOpen, setIsNewRunDialogOpen] = useState(false);
@@ -158,19 +159,19 @@ const Analysis = () => {
       setInvestmentHypothesis("");
 
       // Start the analysis
-      const startedAnalysis = await analysisApi.startAnalysis(opportunityId, newAnalysis.id);
+      const startedAnalysis = await analysisApi.startAnalysis(getClientIdForAnalysis(), opportunityId, newAnalysis.id);
       
       // Update the analysis status in the list
       setAnalyses(prev => prev.map(a => 
         a.id === startedAnalysis.id ? { ...a, status: startedAnalysis.status } : a
       ));
-
      
     } catch (err: any) {
       console.error("Error creating or starting analysis:", err);
+      console.log(err);
       toast({
-        title: "Error",
-        description: err.message || "Failed to create analysis. Please try again.",
+        title: "Error Creating or Starting Analysis",
+        description: JSON.stringify(err.detail) || err.message || "Failed to create analysis. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -561,7 +562,7 @@ const Analysis = () => {
                 value={investmentHypothesis}
                 onChange={(e) => setInvestmentHypothesis(e.target.value)}
                 rows={5}
-                className="resize-none"
+                className="min-h-[120px] resize-y"
               />
               <p className="text-xs text-muted-foreground">
                 This information will guide the AI agents during their analysis.
