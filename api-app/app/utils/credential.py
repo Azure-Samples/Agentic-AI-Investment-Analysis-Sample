@@ -1,41 +1,34 @@
-from azure.identity import DefaultAzureCredential
-from azure.identity.aio import (
-    DefaultAzureCredential as DefaultAzureCredentialAsync,
-)
+from azure.identity import ChainedTokenCredential, EnvironmentCredential, AzureCliCredential
+from azure.identity.aio import ChainedTokenCredential as ChainedTokenCredentialAsync, EnvironmentCredential as EnvironmentCredentialAsync, AzureCliCredential as AzureCliCredentialAsync
 
+_async_credential : ChainedTokenCredentialAsync = None
+_synch_credential : ChainedTokenCredential = None
 
 async def get_azure_credential_async():
-    """
-    Get Azure credential for async operations.
-    Uses DefaultAzureCredential which tries credentials in this order:
-    1. EnvironmentCredential
-    2. ManagedIdentityCredential
-    3. AzureDeveloperCliCredential (azd auth)
-    4. Others...
-    
-    Note: AzureCliCredential is excluded due to known issues with
-    Cosmos DB scope handling.
-    """
-    return DefaultAzureCredentialAsync(
-        exclude_cli_credential=True,
-        exclude_powershell_credential=True,
-        exclude_visual_studio_code_credential=True,
+    credential_chain = (
+        # Try EnvironmentCredential first
+        EnvironmentCredentialAsync(),
+        # Fallback to Azure CLI if EnvironmentCredential fails
+        AzureCliCredentialAsync(),
     )
+
+    global _async_credential
+    if not _async_credential:
+        _async_credential = ChainedTokenCredentialAsync(*credential_chain)
+        
+    return _async_credential
 
 
 def get_azure_credential():
-    """
-    Get Azure credential for sync operations.
-    Uses DefaultAzureCredential with CLI excluded due to known
-    Cosmos DB authentication issues.
-    """
-    return DefaultAzureCredential(
-        exclude_cli_credential=True,
-        exclude_powershell_credential=True,
-        exclude_visual_studio_code_credential=True,
+    credential_chain = (
+        # Try EnvironmentCredential first
+        EnvironmentCredential(),
+        # Fallback to Azure CLI if EnvironmentCredential fails
+        AzureCliCredential(),
     )
+    
+    global _synch_credential
+    if not _synch_credential:
+        _synch_credential = ChainedTokenCredential(*credential_chain)
 
-
-
-
-
+    return _synch_credential

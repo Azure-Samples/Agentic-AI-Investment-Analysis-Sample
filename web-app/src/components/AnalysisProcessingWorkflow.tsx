@@ -1,16 +1,7 @@
-/**
- * Example React component showing SSE integration with the Analysis page
- * 
- * This demonstrates how to:
- * 1. Start an analysis workflow
- * 2. Stream events in real-time
- * 3. Handle reconnection
- * 4. Display agent progress
- */
-
 import React, { useState, useEffect } from 'react';
+import ReactMarkdown from 'react-markdown';
 import { useAnalysisEvents } from '@/lib/api/analysisEvents';
-import type { AnalysisEvent } from '@/lib/api/analysisEvents';
+import type { EventMessage } from '@/lib/api/analysisEvents';
 import { analysis as analysisApi } from '@/lib/api';
 import type { Analysis } from '@/lib/api/types';
 import { Card } from '@/components/ui/card';
@@ -27,6 +18,7 @@ import {
   DialogTrigger,
   DialogFooter
 } from '@/components/ui/dialog';
+import { get } from 'http';
 
 interface AnalysisProcessingWorkflowProps {
   opportunityId: string;
@@ -42,22 +34,51 @@ export function AnalysisProcessingWorkflow({
   onComplete 
 }: AnalysisProcessingWorkflowProps) {
 
-  // Determine if we should use SSE based on analysis status
-  const isCompleted = analysisStatus === 'completed' || analysisStatus === 'failed';
-  
-  // Connect to SSE for live updates (only if not completed)
-  const sseHook = useAnalysisEvents(
-    opportunityId,
-    analysisId
-  );
-  
+  // Function to create initial agent status
+  const createInitialAgentStatus = () => ({
+    data_prepper: { name: 'data_prepper', displayName: 'Data Preparation Agent', icon: BarChart3, color: 'bg-blue-500', status: 'pending' as const },
+    financial_analyst: { name: 'financial_analyst', displayName: 'Financial Analysis Agent', icon: BarChart3, color: 'bg-blue-500', status: 'pending' as const },
+    risk_analyst: { name: 'risk_analyst', displayName: 'Risk Analysis Agent', icon: AlertTriangle, color: 'bg-orange-500', status: 'pending' as const },
+    market_analyst: { name: 'market_analyst', displayName: 'Market Analysis Agent', icon: TrendingUp, color: 'bg-green-500', status: 'pending' as const },
+    compliance_analyst: { name: 'compliance_analyst', displayName: 'Compliance Analysis Agent', icon: Gavel, color: 'bg-yellow-500', status: 'pending' as const },
+    investment_challenger: { name: 'investment_challenger', displayName: 'Investment Challenger Agent', icon: Circle, color: 'bg-red-500', status: 'pending' as any, data: null as any },
+    investment_supporter: { name: 'investment_supporter', displayName: 'Investment Supporter Agent', icon: CheckCircle, color: 'bg-green-600', status: 'pending' as any, data: null as any },
+    summary_report_generator: { name: 'summary_report_generator', displayName: 'Summary Agent', icon: FileText, color: 'bg-purple-500', status: 'pending' as const },
+  });
+
+  const [agentStatus, setAgentStatus] = useState<Record<string, {
+    status: 'pending' | 'running' | 'completed' | 'failed';
+    name?: string;
+    displayName?: string;
+    icon?: any;
+    color?: string;
+    data?: any;
+    extractedResult?: string[];
+  }>>(createInitialAgentStatus());
+
+  const [cachedAnalysisData, setCachedAnalysisData] = useState<Analysis | null>(null);
+  const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
+  const [processedSequences, setProcessedSequences] = useState<Set<number>>(new Set());
+  const [isEventLogOpen, setIsEventLogOpen] = useState(false);
+  const [isLoadingCachedResults, setIsLoadingCachedResults] = useState(false);
+
   // Preserve events even after completion
-  const [preservedEvents, setPreservedEvents] = useState<AnalysisEvent[]>([]);
+  const [preservedEvents, setPreservedEvents] = useState<EventMessage[]>([]);
 
   const [isAgentDetailOpen, setIsAgentDetailOpen] = useState(false);
   const [selectedAgentDetail, setSelectedAgentDetail] = useState<string | null>(null);
   const [isCopied, setIsCopied] = useState(false);
   
+ // Determine if we should use SSE based on analysis status
+  const isCompleted = analysisStatus === 'completed' || analysisStatus === 'failed';
+  
+  // Connect to SSE for live updates (only if not completed)
+  const sseHook = useAnalysisEvents(
+    opportunityId,
+    analysisId,
+    isCompleted
+  );
+
   // Use SSE data, but preserve events after completion
   const { events: liveEvents, connectionState, lastSequence, reconnect } = sseHook;
   
@@ -70,34 +91,7 @@ export function AnalysisProcessingWorkflow({
   
   // Use live events if available, otherwise use preserved events
   const events = liveEvents.length > 0 ? liveEvents : preservedEvents;
-
-  // Function to create initial agent status
-  const createInitialAgentStatus = () => ({
-    financial: { name: 'financial', displayName: 'Financial Analysis Agent', icon: BarChart3, color: 'bg-blue-500', status: 'pending' as const },
-    risk: { name: 'risk', displayName: 'Risk Analysis Agent', icon: AlertTriangle, color: 'bg-orange-500', status: 'pending' as const },
-    market: { name: 'market', displayName: 'Market Analysis Agent', icon: TrendingUp, color: 'bg-green-500', status: 'pending' as const },
-    compliance: { name: 'compliance', displayName: 'Compliance Analysis Agent', icon: Gavel, color: 'bg-yellow-500', status: 'pending' as const },
-    challenger: { name: 'challenger', displayName: 'Investment Challenger Agent', icon: Circle, color: 'bg-red-500', status: 'pending' as const },
-    supporter: { name: 'supporter', displayName: 'Investment Supporter Agent', icon: CheckCircle, color: 'bg-green-600', status: 'pending' as const },
-    summary: { name: 'summary', displayName: 'Summary Agent', icon: FileText, color: 'bg-purple-500', status: 'pending' as const },
-  });
-
-  const [agentStatus, setAgentStatus] = useState<Record<string, {
-    status: 'pending' | 'running' | 'completed' | 'failed';
-    name?: string;
-    displayName?: string;
-    icon?: any;
-    color?: string;
-    score?: number;
-    insights?: string[];
-    result?: any;
-  }>>(createInitialAgentStatus());
-
-  const [workflowStatus, setWorkflowStatus] = useState<'idle' | 'running' | 'completed' | 'failed'>('idle');
-  const [processedSequences, setProcessedSequences] = useState<Set<number>>(new Set());
-  const [isEventLogOpen, setIsEventLogOpen] = useState(false);
-  const [isLoadingCachedResults, setIsLoadingCachedResults] = useState(false);
-
+  
   // Load cached results if analysis is already completed
   useEffect(() => {
     const loadCachedResults = async () => {
@@ -105,8 +99,13 @@ export function AnalysisProcessingWorkflow({
       
       try {
         setIsLoadingCachedResults(true);
+        // reset the agent status data
+        setAgentStatus([] as any);
+
         const analysisData: Analysis = await analysisApi.getAnalysis(opportunityId, analysisId);
-        
+
+        setCachedAnalysisData(analysisData);
+
         console.log('Loading cached results for completed analysis:', analysisData);
         
         // Set workflow status based on analysis status
@@ -114,16 +113,29 @@ export function AnalysisProcessingWorkflow({
         
         // Parse agent results and populate agent status
         if (analysisData.agent_results && Object.keys(analysisData.agent_results).length > 0) {
-          const updatedAgentStatus = { ...agentStatus };
+          const updatedAgentStatus = createInitialAgentStatus();
           
           Object.entries(analysisData.agent_results).forEach(([agentName, result]: [string, any]) => {
-            if (updatedAgentStatus[agentName]) {
+            if (agentName === 'investment_debate_executor') {
+              // Mark both investment agents as completed
+              updatedAgentStatus['investment_supporter'] = {
+                ...updatedAgentStatus['investment_supporter'],
+                status: 'completed',
+                data: result
+              };
+
+              updatedAgentStatus['investment_challenger'] = {
+                ...updatedAgentStatus['investment_challenger'],
+                status: 'completed',
+                data: result
+              };
+
+            }
+            else if (updatedAgentStatus[agentName]) {
               updatedAgentStatus[agentName] = {
                 ...updatedAgentStatus[agentName],
                 status: 'completed',
-                score: result.score,
-                insights: result.insights || result.key_insights || [],
-                result: result
+                data: result
               };
             }
           });
@@ -131,17 +143,20 @@ export function AnalysisProcessingWorkflow({
           setAgentStatus(updatedAgentStatus);
         }
 
-        setPreservedEvents(analysisData?.events || []);
-        
-        // Call onComplete callback if provided
-        if (onComplete) {
-          onComplete(analysisData.status, analysisData);
-        }
+        // Fetch events from the api and set preserved events
+        const fetchedEvents = await analysisApi.fetchAnalysisEvents(opportunityId, analysisId);
+
+        setPreservedEvents(fetchedEvents || []);
+
       } catch (error) {
         console.error('Error loading cached results:', error);
         // Fall back to showing pending state
       } finally {
         setIsLoadingCachedResults(false);
+
+        if ((workflowStatus === 'completed' || workflowStatus === 'failed') && onComplete) {
+          onComplete(workflowStatus, cachedAnalysisData);
+        }
       }
     };
     
@@ -168,7 +183,7 @@ export function AnalysisProcessingWorkflow({
     if (events.length === 0) return;
 
     // Process only new events that haven't been processed yet
-    const newEvents = events.filter(event => !processedSequences.has(event.data.sequence));
+    const newEvents = events.filter(event => !processedSequences.has(event.sequence));
     
     if (newEvents.length === 0) return;
 
@@ -177,60 +192,109 @@ export function AnalysisProcessingWorkflow({
     // Mark these events as processed
     setProcessedSequences(prev => {
       const next = new Set(prev);
-      newEvents.forEach(event => next.add(event.data.sequence));
+      newEvents.forEach(event => next.add(event.sequence));
       return next;
     });
 
     // Process each new event
     newEvents.forEach(event => {
-      switch (event.event_type) {
+      switch (event.type) {
         case 'workflow_started':
           setWorkflowStatus('running');
           break;
-
-        case 'agent_started':
-          if (event.agent) {
+        
+        case 'executor_invoked':
+          if (event.executor) {
+            
+            // Handle specific executor invocation
+            if (event.executor === 'investment_debate_executor') {
+              // Mark both investment agents as running
+              setAgentStatus(prev => ({
+                ...prev,
+                'investment_supporter': { 
+                  ...prev['investment_supporter'],
+                  status: 'running' 
+                },
+                'investment_challenger': { 
+                  ...prev['investment_challenger'],
+                  status: 'running' 
+                }
+              }));
+            }
+            
             setAgentStatus(prev => ({
               ...prev,
-              [event.agent!]: { 
-                ...prev[event.agent!],
+              [event.executor!]: { 
+                ...prev[event.executor!],
                 status: 'running' 
               }
             }));
           }
           break;
 
-        case 'agent_completed':
-          if (event.agent) {
-            setAgentStatus(prev => ({
-              ...prev,
-              [event.agent!]: {
-                ...prev[event.agent!],
-                status: 'completed',
-                score: event.data.score,
-                insights: event.data.result?.insights || [],
-                result: event.data.result
-              }
-            }));
+        // case 'executor_completed':
+        //   if (event.executor) {
+        //     setAgentStatus(prev => ({
+        //       ...prev,
+        //       [event.executor!]: {
+        //         ...prev[event.executor!],
+        //         status: 'completed',
+        //         data: event.data
+        //       }
+        //     }));
+        //   }
+        //   break;
+
+        case 'workflow_output':
+          if (event.executor) {
+            // Handle specific executor invocation
+            if (event.executor === 'investment_debate_executor') {
+              // Mark both investment agents as completed
+              setAgentStatus(prev => ({
+                ...prev,
+                'investment_supporter': {
+                  ...prev['investment_supporter'],
+                  status: 'completed',
+                  data: event.data
+                },
+                'investment_challenger': {
+                  ...prev['investment_challenger'],
+                  status: 'completed',
+                  data: event.data
+                }
+              }));
+            } else {
+                setAgentStatus(prev => ({
+                    ...prev,
+                    [event.executor!]: {
+                      ...prev[event.executor!],
+                    status: 'completed',
+                    data: event.data
+                  }
+                }));
+            }
           }
           break;
 
-        case 'agent_failed':
-          if (event.agent) {
+        case 'executor_failed':
+          if (event.executor) {
             setAgentStatus(prev => ({
               ...prev,
-              [event.agent!]: { 
-                ...prev[event.agent!],
+              [event.executor!]: { 
+                ...prev[event.executor!],
                 status: 'failed' 
               }
             }));
           }
           break;
 
-        case 'workflow_completed':
-          setWorkflowStatus('completed');
-          if (onComplete) {
-            onComplete('completed', event.data);
+        case 'workflow_status':
+          // Workflowe status update, when state is IDLE means completed
+          if (event.data?.state === 'IDLE') {
+            setWorkflowStatus('completed');
+            if (onComplete) {
+              onComplete('completed', event.data);
+            }
           }
           break;
 
@@ -244,33 +308,7 @@ export function AnalysisProcessingWorkflow({
     });
   }, [events, processedSequences, onComplete, isCompleted]);
 
-  // const getAgentIcon = (agentName: string) => {
-  //   switch (agentName) {
-  //     case 'financial': return BarChart3;
-  //     case 'risk': return AlertTriangle;
-  //     case 'market': return TrendingUp;
-  //     case 'compliance': return CheckCircle;
-  //     case 'challenger': return AlertTriangle;
-  //     case 'supporter': return CheckCircle;
-  //     case 'summary': return FileText;
-  //     default: return Circle;
-  //   }
-  // };
-
-  // const getAgentColor = (agentName: string) => {
-  //   switch (agentName) {
-  //     case 'financial': return 'bg-blue-500';
-  //     case 'risk': return 'bg-orange-500';
-  //     case 'market': return 'bg-green-500';
-  //     case 'compliance': return 'bg-emerald-500';
-  //     case 'challenger': return 'bg-red-500';
-  //     case 'supporter': return 'bg-green-600';
-  //     case 'summary': return 'bg-purple-500';
-  //     default: return 'bg-gray-500';
-  //   }
-  // };
-
-  const getAgentStatusColor = (status: string) => {
+  const getExecutorStatusColor = (status: string) => {
     switch (status) {
       case 'pending': return 'bg-yellow-400';
       case 'running': return 'bg-blue-400';
@@ -289,7 +327,7 @@ export function AnalysisProcessingWorkflow({
   const handleCopyToClipboard = async () => {
     if (selectedAgent) {
       try {
-        await navigator.clipboard.writeText(selectedAgent.insights.join('\n'));
+        await navigator.clipboard.writeText(selectedAgent.data.join('\n'));
         setIsCopied(true);
         
         setTimeout(() => setIsCopied(false), 2000);
@@ -301,15 +339,58 @@ export function AnalysisProcessingWorkflow({
 
   const selectedAgent = Object.entries(agentStatus).find(([name, _]) => name === selectedAgentDetail)?.[1];
 
-  const allCoreAgentsPending = ['financial', 'risk', 'market', 'compliance'].every(agentName => 
+  const getSelectedAgentDetailReportContent = () => {
+    if (!selectedAgent) return null;
+
+    // Extract the data based on agent type
+    const agentData = selectedAgent.data;
+
+    // If the agent is one of the core analysts, show executive summary
+    if (['financial_analyst', 'risk_analyst', 'market_analyst', 'compliance_analyst'].includes(selectedAgentDetail)) {
+      const executiveSummary = agentData?.executive_summary || '';
+      const ai_agent_analysis = agentData?.ai_agent_analysis || '';
+      const conclusions = agentData?.conclusions || '';
+      const sources = agentData?.sources || '';
+
+      const report_text = `# **Executive Summary**\n${executiveSummary}\n\n# **AI Agent Analysis**\n${ai_agent_analysis}\n\n# **Conclusions**\n${conclusions}\n\n# **Sources**\n${sources}`;
+
+      return (
+          <ReactMarkdown>{report_text}</ReactMarkdown>
+      );
+    }
+    else if (['investment_supporter'].includes(selectedAgentDetail)) {
+      const report_text = agentData?.investment_supporter || '';
+      return (
+        <ReactMarkdown>{report_text}</ReactMarkdown>
+      );
+    } else if (['investment_challenger'].includes(selectedAgentDetail)) {
+      const report_text = agentData?.investment_challenger || '';
+      return (
+        <ReactMarkdown>{report_text}</ReactMarkdown>
+      );
+    } else if (['summary_report_generator'].includes(selectedAgentDetail)) {
+      const report_text = agentData?.summary_report_generator || '';
+      return (
+        <ReactMarkdown>{report_text}</ReactMarkdown>
+      );
+    }
+
+    return (
+      <div>
+        No detailed report available for this agent.
+      </div>
+    );
+  };
+
+  const allCoreAgentsPending = ['financial_analyst', 'risk_analyst', 'market_analyst', 'compliance_analyst'].every(agentName => 
     agentStatus[agentName]?.status === 'pending'
   );
 
-  const allPerspectiveAgentsPending = ['challenger', 'supporter'].every(agentName => 
+  const allPerspectiveAgentsPending = ['investment_supporter', 'investment_challenger'].every(agentName => 
     agentStatus[agentName]?.status === 'pending'
   );
 
-  const summaryAgentPending = agentStatus['summary']?.status === 'pending';
+  const summaryAgentPending = agentStatus['summary_report_generator']?.status === 'pending';
 
   const allAgentsPending = Object.values(agentStatus).every(agent => 
     agent.status === 'pending'
@@ -367,8 +448,8 @@ export function AnalysisProcessingWorkflow({
           {events.length > 0 && (
             <>
               <span className="text-gray-500 text-xs truncate max-w-xs">
-                Latest: {events[events.length - 1].event_type}
-                {events[events.length - 1].agent && ` (${events[events.length - 1].agent})`}
+                Latest: {events[events.length - 1].type}
+                {events[events.length - 1].executor && ` (${events[events.length - 1].executor})`}
               </span>
               <span className="text-gray-400">•</span>
             </>
@@ -402,19 +483,19 @@ export function AnalysisProcessingWorkflow({
                       <div className="flex items-center justify-between mb-1.5">
                         <div className="flex items-center gap-2">
                           <span className="text-[10px] font-mono text-gray-500 bg-gray-100 px-1.5 py-0.5 rounded">
-                            #{event.data.sequence}
+                            #{event.sequence}
                           </span>
                           <span className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wide ${
-                            event.event_type.includes('completed') ? 'bg-green-100 text-green-700 border border-green-300' :
-                            event.event_type.includes('failed') ? 'bg-red-100 text-red-700 border border-red-300' :
-                            event.event_type.includes('started') ? 'bg-blue-100 text-blue-700 border border-blue-300' :
+                            event.type?.includes('completed') ? 'bg-green-100 text-green-700 border border-green-300' :
+                            event.type?.includes('failed') ? 'bg-red-100 text-red-700 border border-red-300' :
+                            event.type?.includes('started') || event.type?.includes('invoked') ? 'bg-blue-100 text-blue-700 border border-blue-300' :
                             'bg-gray-100 text-gray-700 border border-gray-300'
                           }`}>
-                            {event.event_type.replace(/_/g, ' ')}
+                            {event.type}
                           </span>
-                          {event.agent && (
+                          {event.executor && (
                             <span className="px-2 py-0.5 rounded text-[10px] bg-purple-100 text-purple-700 border border-purple-300 font-semibold uppercase tracking-wide">
-                              {event.agent}
+                              {event.executor}
                             </span>
                           )}
                         </div>
@@ -427,7 +508,7 @@ export function AnalysisProcessingWorkflow({
                           {event.message}
                         </div>
                       )}
-                      {event.data && Object.keys(event.data).length > 1 && (
+                      {event.data && Object.keys(event.data).length > 0 && (
                         <details className="mt-1.5 group">
                           <summary className="cursor-pointer text-[10px] text-gray-600 hover:text-blue-600 transition-colors font-mono uppercase tracking-wide">
                             → Expand payload
@@ -470,20 +551,45 @@ export function AnalysisProcessingWorkflow({
                   <p className="text-muted-foreground">Initializing AI agents...</p>
                 </div>
               )}
-              
-              {/* Core Analysis Agents */}
 
-              {!allCoreAgentsPending && (
+              {/* Check when the workflow failed. Show an error message and ask the user to view the events */}
+              {!isLoadingCachedResults && workflowStatus === 'failed' && (
+                <div className="flex flex-col items-center justify-center py-12 text-center">
+                  <>
+                  <AlertTriangle className="h-10 w-10 text-red-600 mb-4" />
+                  <p className="text-red-600 font-medium mb-2">The analysis workflow has failed.</p>
+
+                  {(events && events.length > 0) ? (
+                    <>
+                      <p className="text-muted-foreground text-xs mb-4">Please try running the analysis again or check the event log for more details.</p>
+                      <Button
+                        variant="outline"
+                        onClick={() => setIsEventLogOpen(true)}
+                      >
+                        View Event Log
+                      </Button>
+                      </>
+                   ) : (isCompleted && cachedAnalysisData && cachedAnalysisData.error_details) ? (
+                      <p className="text-muted-foreground mb-4">{cachedAnalysisData.error_details.error}</p>
+                   ) : () => (<></>)
+                  }
+
+                  </>
+                </div>
+              )}
+
+              {/* Core Analysis Agents */}
+              {!isLoadingCachedResults && !allCoreAgentsPending && (
                 <div className="mb-4">
                   <h3 className="text-sm font-medium text-muted-foreground mb-3">Core Analysis</h3>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    { Object.entries(agentStatus).filter(([agentName, status]) => {
-                        return (agentName === 'financial' ||
-                              agentName === 'risk' ||
-                              agentName === 'market' ||
-                              agentName === 'compliance') && (status.status === 'running' || status.status === 'completed' || status.status === 'failed');
+                    { Object.entries(agentStatus).filter(([agentName, agent]) => {
+                        return (agentName === 'financial_analyst' ||
+                                agentName === 'risk_analyst' ||
+                                agentName === 'market_analyst' ||
+                                agentName === 'compliance_analyst') && (agent.status === 'running' || agent.status === 'completed' || agent.status === 'failed');
                       }).map(([agentName, agent]) => {
-
+                        console.log('Rendering agent:', agentName, agent);
                       return (
                         <div
                           key={agentName}
@@ -502,7 +608,7 @@ export function AnalysisProcessingWorkflow({
                               </div>
                             </div>
                             <div className="text-right flex-shrink-0 ml-2">
-                              <div className={`w-3 h-3 rounded-full ${getAgentStatusColor(agent.status)} ${agent.status === 'running' ? 'animate-pulse' : ''}`} />
+                              <div className={`w-3 h-3 rounded-full ${getExecutorStatusColor(agent.status)} ${agent.status === 'running' ? 'animate-pulse' : ''}`} />
                             </div>
                           </div>
                           
@@ -514,14 +620,27 @@ export function AnalysisProcessingWorkflow({
                               <span className="text-xs text-muted-foreground">Analyzing...</span>
                               </div>
                             ) : (
-                              <ul className="space-y-0.5">
-                              {agent.insights?.map((insight, index) => (
-                                <li key={index} className="text-xs text-muted-foreground flex items-start leading-tight">
-                                <span className="mr-1 flex-shrink-0">•</span>
-                                <span className="flex-1">{insight}</span>
-                                </li>
-                              ))}
-                              </ul>
+                              
+                              <div>
+                                {agent.status === 'failed' ? (
+                                  <div className="text-xs text-red-600 font-medium mt-2">
+                                    ⚠️ This agent encountered an error during processing.
+                                  </div>
+                                ) : (agent.status === 'completed' && agent.data && agent.data.executive_summary) ? (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    {/* Show first 120 characters of executive summary */}
+                                    <ReactMarkdown>
+                                      {agent.data.executive_summary.slice(0, 120) + (agent.data.executive_summary.length > 120 ? '...' : '')}
+                                    </ReactMarkdown>
+
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    No insights extracted.
+                                  </div>
+                                )}
+                              </div>
+
                             )}
                           </div>
 
@@ -530,6 +649,7 @@ export function AnalysisProcessingWorkflow({
                             <Button 
                               variant="ghost" 
                               size="sm"
+                              disabled={agent.status !== 'completed'}
                               onClick={() => handleExpandAgentReport(agent.name!)}
                               className="text-xs h-6 px-2"
                             >
@@ -547,14 +667,14 @@ export function AnalysisProcessingWorkflow({
               )}
 
               {/* Perspective Agents */}
-              {!allPerspectiveAgentsPending && (
+              {!isLoadingCachedResults && !allPerspectiveAgentsPending && (
               <div className="mb-4">
                 <h3 className="text-sm font-medium text-muted-foreground mb-3">Investment Perspectives</h3>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                   
                   { Object.entries(agentStatus).filter(([agentName, status]) => {
-                      return (agentName === 'supporter' ||
-                             agentName === 'challenger') && (status.status === 'running' || status.status === 'completed' || status.status === 'failed');
+                      return (agentName === 'investment_supporter' ||
+                             agentName === 'investment_challenger') && (status.status === 'running' || status.status === 'completed' || status.status === 'failed');
                     }).map(([agentName, agent]) => {
                     
                     return (
@@ -574,7 +694,7 @@ export function AnalysisProcessingWorkflow({
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0 ml-2">
-                            <div className={`w-3 h-3 rounded-full ${getAgentStatusColor(agent.status)} ${agent.status === 'running' ? 'animate-pulse' : ''}`} />
+                            <div className={`w-3 h-3 rounded-full ${getExecutorStatusColor(agent.status)} ${agent.status === 'running' ? 'animate-pulse' : ''}`} />
                           </div>
                         </div>
                         
@@ -585,14 +705,33 @@ export function AnalysisProcessingWorkflow({
                               <span className="text-xs text-muted-foreground">Analyzing...</span>
                               </div>
                             ) : (
-                              <ul className="space-y-0.5">
-                              {agent.insights?.map((insight, index) => (
-                                <li key={index} className="text-xs text-muted-foreground flex items-start leading-tight">
-                                <span className="mr-1 flex-shrink-0">•</span>
-                                <span className="flex-1">{insight}</span>
-                                </li>
-                              ))}
-                              </ul>
+                              <div>
+                                {agent.status === 'failed' ? (
+                                  <div className="text-xs text-red-600 font-medium mt-2">
+                                    ⚠️ This agent encountered an error during processing.
+                                  </div>
+                                ) : (agentName === 'investment_supporter' && agent.status === 'completed' 
+                                     && agent.data && agent.data.investment_supporter) ? (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    {/* Show first 120 characters of supporter output */}
+                                    <ReactMarkdown>
+                                      {agent.data.investment_supporter.slice(0, 120) + (agent.data.investment_supporter.length > 120 ? '...' : '')}
+                                    </ReactMarkdown>
+                                  </div>
+                                ) : (agentName === 'investment_challenger' && agent.status === 'completed' 
+                                     && agent.data && agent.data.investment_challenger) ? (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    {/* Show first 120 characters of challenger output */}
+                                    <ReactMarkdown>
+                                      {agent.data.investment_challenger.slice(0, 120) + (agent.data.investment_challenger.length > 120 ? '...' : '')}
+                                    </ReactMarkdown>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    No insights extracted.
+                                  </div>
+                                )}
+                              </div>
                             )}
                         </div>
 
@@ -600,6 +739,7 @@ export function AnalysisProcessingWorkflow({
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            disabled={agent.status !== 'completed'}
                             onClick={() => handleExpandAgentReport(agent.name!)}
                             className="text-xs h-6 px-2"
                           >
@@ -616,13 +756,13 @@ export function AnalysisProcessingWorkflow({
 
 
               {/* Summary Agent */}
-              {!summaryAgentPending && (
+              {!isLoadingCachedResults && !summaryAgentPending && (
               <div>
                 <h3 className="text-sm font-medium text-muted-foreground mb-3">Overall Summary</h3>
                 <div className="grid grid-cols-1 gap-3">
                   
                   { Object.entries(agentStatus).filter(([agentName, status]) => {
-                      return agentName === 'summary' && (status.status === 'running' || status.status === 'completed' || status.status === 'failed');
+                      return agentName === 'summary_report_generator' && (status.status === 'running' || status.status === 'completed' || status.status === 'failed');
                     }).map(([agentName, agent]) => {
 
                     return (
@@ -643,7 +783,7 @@ export function AnalysisProcessingWorkflow({
                             </div>
                           </div>
                           <div className="text-right flex-shrink-0 ml-2">
-                            <div className={`w-3 h-3 rounded-full ${getAgentStatusColor(agent.status)} ${agent.status === 'running' ? 'animate-pulse' : ''}`} />
+                            <div className={`w-3 h-3 rounded-full ${getExecutorStatusColor(agent.status)} ${agent.status === 'running' ? 'animate-pulse' : ''}`} />
                           </div>
                         </div>
 
@@ -654,14 +794,24 @@ export function AnalysisProcessingWorkflow({
                               <span className="text-xs text-muted-foreground">Analyzing...</span>
                               </div>
                             ) : (
-                              <ul className="space-y-0.5">
-                              {agent.insights?.map((insight, index) => (
-                                <li key={index} className="text-xs text-muted-foreground flex items-start leading-tight">
-                                <span className="mr-1 flex-shrink-0">•</span>
-                                <span className="flex-1">{insight}</span>
-                                </li>
-                              ))}
-                              </ul>
+                              <div>
+                                {agent.status === 'failed' ? (
+                                  <div className="text-xs text-red-600 font-medium mt-2">
+                                    ⚠️ This agent encountered an error during processing.
+                                  </div>
+                                ) : (agent.status === 'completed' && agent.data && agent.data.summary_report_generator) ? (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    {/* Show first 120 characters of executive summary */}
+                                    <ReactMarkdown>
+                                      {agent.data.summary_report_generator.slice(0, 120) + (agent.data.summary_report_generator.length > 120 ? '...' : '')}
+                                    </ReactMarkdown>
+                                  </div>
+                                ) : (
+                                  <div className="text-xs text-muted-foreground mt-2">
+                                    No insights extracted.
+                                  </div>
+                                )}
+                              </div>
                             )}
                         </div>
 
@@ -669,6 +819,7 @@ export function AnalysisProcessingWorkflow({
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            disabled={agent.status !== 'completed'}
                             onClick={() => handleExpandAgentReport(agent.name!)}
                             className="text-xs h-6 px-2"
                           >
@@ -737,7 +888,7 @@ export function AnalysisProcessingWorkflow({
             <div className="prose prose-sm max-w-none dark:prose-invert">
               {selectedAgent && (
                 <pre className="whitespace-pre-wrap font-sans text-sm leading-relaxed">
-                  {selectedAgent.insights?.join('\n\n')}
+                  {getSelectedAgentDetailReportContent()}
                 </pre>
               )}
             </div>

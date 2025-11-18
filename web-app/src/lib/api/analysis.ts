@@ -6,10 +6,8 @@ import apiClient from './client';
 import type {
   Analysis,
   AnalysisCreateRequest,
-  AnalysisUpdateRequest,
-  AnalysisCompleteRequest,
-  AnalysisFailRequest,
 } from './types';
+import type { EventMessage } from './analysisEvents';
 
 /**
  * Get all analyses for the current user
@@ -40,21 +38,10 @@ export async function createAnalysis(data: AnalysisCreateRequest): Promise<Analy
 }
 
 /**
- * Update an existing analysis
- */
-export async function updateAnalysis(
-  opportunityId: string,
-  analysisId: string,
-  data: AnalysisUpdateRequest
-): Promise<Analysis> {
-  return apiClient.put<Analysis>(`/analysis/${opportunityId}/${analysisId}`, data);
-}
-
-/**
  * Start an analysis run
  */
-export async function startAnalysis(opportunityId: string, analysisId: string): Promise<Analysis> {
-  return apiClient.post<Analysis>(`/analysis/${opportunityId}/${analysisId}/start`, {});
+export async function startAnalysis(clientId:string, opportunityId: string, analysisId: string): Promise<Analysis> {
+  return apiClient.post<Analysis>(`/analysis/${opportunityId}/${analysisId}/start/${clientId}`, {});
 }
 
 /**
@@ -69,4 +56,17 @@ export async function deleteAnalysis(
   softDelete: boolean = true
 ): Promise<void> {
   return apiClient.delete<void>(`/analysis/${opportunityId}/${analysisId}`, { soft_delete: softDelete });
+}
+
+/**
+ * Fetch all events for a specific analysis
+ * @param opportunityId - The ID of the opportunity
+ * @param analysisId - The ID of the analysis
+ * @returns Promise resolving to an array of EventMessage objects
+ */
+export async function fetchAnalysisEvents(
+  opportunityId: string,
+  analysisId: string
+): Promise<EventMessage[]> {
+  return apiClient.get<EventMessage[]>(`/analysis/${opportunityId}/${analysisId}/events`);
 }

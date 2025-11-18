@@ -28,14 +28,15 @@ class Settings(BaseSettings):
 
     # Azure Cosmos DB Settings
     COSMOS_DB_ENDPOINT: str = ""
-    COSMOS_DB_CREDENTIAL_TYPE: str = "default"  # Options: "default", "key"
-    COSMOS_DB_KEY: Optional[str] = None  # Only used if credential type is "key"
     COSMOS_DB_DATABASE_NAME: str = "ai-investment-analysis-sample"
     
     # Azure Blob Storage Settings
     AZURE_STORAGE_ACCOUNT_NAME: str = ""
     AZURE_STORAGE_CONTAINER_NAME: str = "opportunity-documents"
 
+    # Azure OpenAI Settings
+    AZURE_OPENAI_ENDPOINT: str = ""
+    AZURE_OPENAI_DEPLOYMENT_NAME: str = ""
 
 @lru_cache()
 def get_settings() -> Settings:

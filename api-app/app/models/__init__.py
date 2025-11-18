@@ -5,7 +5,8 @@ from ._user import User
 from ._document import Document
 from ._analysis import Analysis
 from ._opportunity import Opportunity
-
+from ._analysis_workflow_event import AnalysisWorkflowEvent
+from ._stream_event_message import StreamEventMessage
 try:
     __version__ = importlib.metadata.version(__name__)
 except importlib.metadata.PackageNotFoundError:
@@ -17,4 +18,6 @@ __all__ = [
             "Document",
             "Analysis",
             "Opportunity",
+            "AnalysisWorkflowEvent",
+            "StreamEventMessage",
           ]

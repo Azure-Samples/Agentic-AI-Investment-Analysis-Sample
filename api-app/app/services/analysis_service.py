@@ -48,7 +48,7 @@ class AnalysisService:
         analysis_id: str,
         opportunity_id: str,
         owner_id: Optional[str] = None
-    ) -> Optional[Analysis]:
+    ) -> Analysis:
         """Get a single analysis by ID"""
         try:
             analysis = await self.analysis_repo.get_analysis_by_id(analysis_id=analysis_id, 
@@ -70,7 +70,6 @@ class AnalysisService:
         owner_id: str,
         investment_hypothesis: Optional[str] = None,
         tags: Optional[List[str]] = None,
-        status: str = "pending"
     ) -> Analysis:
         """Create a new analysis"""
         try:
@@ -80,7 +79,7 @@ class AnalysisService:
                 owner_id=owner_id,
                 investment_hypothesis=investment_hypothesis,
                 tags=tags or [],
-                status=status,
+                status="pending",
                 is_active=True
             )
             
@@ -96,41 +95,11 @@ class AnalysisService:
         analysis_id: str,
         opportunity_id: str,
         owner_id: str,
-        name: Optional[str] = None,
-        investment_hypothesis: Optional[str] = None,
-        status: Optional[str] = None,
-        overall_score: Optional[int] = None,
-        agent_results: Optional[Dict[str, Any]] = None,
-        result: Optional[str] = None,
-        tags: Optional[List[str]] = None,
-        started_at: Optional[str] = None,
-        completed_at: Optional[str] = None,
-        is_active: Optional[bool] = None
+        updates: Optional[Dict[str, Any]] = None,
     ) -> Optional[Analysis]:
         """Update an existing analysis"""
         try:
             # Build updates dictionary with only provided fields
-            updates = {}
-            if name is not None:
-                updates["name"] = name
-            if investment_hypothesis is not None:
-                updates["investment_hypothesis"] = investment_hypothesis
-            if status is not None:
-                updates["status"] = status
-            if overall_score is not None:
-                updates["overall_score"] = overall_score
-            if agent_results is not None:
-                updates["agent_results"] = agent_results
-            if result is not None:
-                updates["result"] = result
-            if tags is not None:
-                updates["tags"] = tags
-            if started_at is not None:
-                updates["started_at"] = started_at
-            if completed_at is not None:
-                updates["completed_at"] = completed_at
-            if is_active is not None:
-                updates["is_active"] = is_active
             
             if not updates:
                 logger.warning(f"No updates provided for analysis {analysis_id}")
@@ -140,9 +109,9 @@ class AnalysisService:
             
             updated_analysis = await self.analysis_repo.update_analysis(
                 analysis_id=analysis_id,
-                updates=updates,
                 opportunity_id=opportunity_id,
-                owner_id=owner_id
+                owner_id=owner_id,
+                updates=updates,
             )
             
             if updated_analysis:
@@ -165,9 +134,10 @@ class AnalysisService:
         """Delete an analysis"""
         try:
             deleted = await self.analysis_repo.delete_analysis(
-                analysis_id,
-                owner_id,
-                soft_delete
+                analysis_id=analysis_id,
+                opportunity_id=opportunity_id,
+                owner_id=owner_id,
+                soft_delete=soft_delete
             )
             
             if deleted:
@@ -211,6 +181,106 @@ class AnalysisService:
         except Exception as e:
             logger.error(f"Error starting analysis {analysis_id}: {str(e)}")
             raise
+    
+    async def save_agent_result(
+        self,
+        analysis_id: str,
+        opportunity_id: str,
+        executor_id: str,
+        result: Dict[str, Any]
+    ) -> Optional[Analysis]:
+        """Save agent result to analysis"""
+        
+        logger.debug(f"Saving agent result for analysis {analysis_id}, executor {executor_id}")
+        
+        try:
+            analysis = await self.get_analysis_by_id(analysis_id=analysis_id, opportunity_id=opportunity_id)
+            if not analysis:
+                raise Exception(f"Analysis {analysis_id} not found for opportunity {opportunity_id}")
+            
+            if not analysis.agent_results:
+                analysis.agent_results = {}
+
+            analysis.agent_results[executor_id] = result.to_dict() if result and hasattr(result, 'to_dict') else result # flatten result if it has to_dict method
+
+            updated_analysis = await self.analysis_repo.update_analysis(
+                analysis_id=analysis_id,
+                opportunity_id=opportunity_id,
+                owner_id=None,
+                updates={"agent_results": analysis.agent_results}
+            )
+            
+            if updated_analysis:
+                logger.debug(f"Saved agent result for analysis {analysis_id}, executor {executor_id}")
+            
+            return updated_analysis
+        except Exception as e:
+            logger.error(f"Error saving agent result for analysis {analysis_id}, executor {executor_id}: {str(e)}")
+            raise
+    
+    async def complete_analysis(
+        self,
+        analysis_id: str,
+        opportunity_id: str
+    ) -> Optional[Analysis]:
+        """Mark an analysis as completed"""
+
+        logger.debug(f"Completing analysis {analysis_id} for opportunity {opportunity_id}")
+
+        try:
+            updates = {
+                "status": "completed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+
+            updated_analysis = await self.update_analysis(
+                analysis_id=analysis_id,
+                opportunity_id=opportunity_id,
+                owner_id=None,
+                updates=updates,
+            )
+
+            if updated_analysis:
+                logger.debug(f"Completed analysis {analysis_id}")
+
+            return updated_analysis
+        except Exception as e:
+            logger.error(f"Error completing analysis {analysis_id}: {str(e)}")
+            raise
+            
+    async def fail_analysis(
+        self,
+        analysis_id: str,
+        opportunity_id: str,
+        error_details: Dict[str, Any]
+    ) -> Optional[Analysis]:
+        """Mark an analysis as failed"""
+
+        logger.debug(f"Failing analysis {analysis_id} for opportunity {opportunity_id}")
+
+        try:
+            updates = {
+                "status": "failed",
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+                "error_details": error_details
+            }
+
+            updated_analysis = await self.update_analysis(
+                analysis_id=analysis_id,
+                opportunity_id=opportunity_id,
+                owner_id=None,
+                updates=updates,
+            )
+
+            if updated_analysis:
+                logger.debug(f"Failed analysis {analysis_id}")
+
+            return updated_analysis
+        except Exception as e:
+            logger.error(f"Error failing analysis {analysis_id}: {str(e)}")
+            raise
+
+        
         
     
     

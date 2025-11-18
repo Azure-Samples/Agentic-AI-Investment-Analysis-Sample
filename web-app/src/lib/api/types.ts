@@ -2,7 +2,7 @@
  * Type definitions for the Investment Analysis API
  */
 
-import { AnalysisEvent } from "./analysisEvents";
+import { EventMessage } from "./analysisEvents";
 
 // Base types
 export type ProcessingStatus = 'pending' | 'in_progress' | 'completed' | 'failed';
@@ -104,14 +104,13 @@ export interface Analysis {
   opportunity_id: string;
   investment_hypothesis?: string;
   status: AnalysisStatus;
-  overall_score?: number;
   agent_results: Record<string, any>;
   result?: string;
   started_at?: string;
   completed_at?: string;
   owner_id: string;
+  error_details?: Record<string, any>;
   is_active: boolean;
-  events: AnalysisEvent[];
   created_at: string;
   updated_at: string;
 }
@@ -121,27 +120,6 @@ export interface AnalysisCreateRequest {
   opportunity_id: string;
   investment_hypothesis?: string;
   tags?: string[];
-}
-
-export interface AnalysisUpdateRequest {
-  name?: string;
-  investment_hypothesis?: string;
-  status?: AnalysisStatus;
-  overall_score?: number;
-  agent_results?: Record<string, any>;
-  result?: string;
-  tags?: string[];
-  is_active?: boolean;
-}
-
-export interface AnalysisCompleteRequest {
-  overall_score?: number;
-  agent_results?: Record<string, any>;
-  result?: string;
-}
-
-export interface AnalysisFailRequest {
-  error_message?: string;
 }
 
 // Processing event types (for SSE)
