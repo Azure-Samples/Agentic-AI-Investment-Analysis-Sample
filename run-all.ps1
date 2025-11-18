@@ -1,5 +1,5 @@
 #!/usr/bin/env pwsh
-# Script to run api-app, web-app, and mock-ui concurrently
+# Script to run api-app and web-app concurrently
 
 Write-Host "Starting all applications..." -ForegroundColor Green
 Write-Host ""
@@ -62,9 +62,6 @@ Install-PythonDependencies -Path $apiPath -Name "API App"
 $webAppPath = Join-Path $scriptDir "web-app"
 Install-NpmDependencies -Path $webAppPath -Name "Web App"
 
-$mockUiPath = Join-Path $scriptDir "mock-ui"
-Install-NpmDependencies -Path $mockUiPath -Name "Mock UI"
-
 Write-Host ""
 Write-Host "All dependencies ready!" -ForegroundColor Green
 Write-Host ""
@@ -78,15 +75,11 @@ Start-Sleep -Seconds 2
 # Start Web App (Vite React)
 Start-AppInNewWindow -Title "Web App" -WorkingDirectory $webAppPath -Command "pwsh" -Arguments "-NoExit", "-Command", "npm run dev"
 
-# Start Mock UI (Vite React)
-Start-AppInNewWindow -Title "Mock UI" -WorkingDirectory $mockUiPath -Command "pwsh" -Arguments "-NoExit", "-Command", "npm run dev"
-
 Write-Host ""
 Write-Host "All applications started!" -ForegroundColor Green
 Write-Host ""
 Write-Host "Typical ports:" -ForegroundColor Yellow
 Write-Host "  - API App: http://localhost:8000" -ForegroundColor White
 Write-Host "  - Web App: http://localhost:5173" -ForegroundColor White
-Write-Host "  - Mock UI: http://localhost:5174" -ForegroundColor White
 Write-Host ""
 Write-Host "To stop all applications, close the terminal windows." -ForegroundColor Yellow
