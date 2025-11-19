@@ -79,6 +79,11 @@ class CosmosDBClient:
                 "partition_key": "/analysis_id",
                 "throughput": 400
             },
+            {
+                "id": "what_if_conversations",
+                "partition_key": "/analysis_id",
+                "throughput": 400
+            },
         ]
         
         for container_config in containers_config:

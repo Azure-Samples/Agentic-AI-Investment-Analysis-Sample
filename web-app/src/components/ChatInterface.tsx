@@ -42,23 +42,31 @@ class ChatErrorBoundary extends Component<
   }
 }
 
-const ChatInterface = () => {
-  return(
 
-    <ChatContainer />
-  );
+export interface ChatInterfaceProps {
+  analysis_id: string;
+  opportunity_id: string;
+}
 
+const ChatInterface = ({ analysis_id, opportunity_id }: ChatInterfaceProps) => {
   
   // return (
-  //   <ChatErrorBoundary>
-  //     <ChatContainerWithApi
-  //       apiConfig={{
-  //         apiBaseUrl: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
-  //         enableSSE: true
-  //       }}
-  //     />
-  //   </ChatErrorBoundary>
+  //   <ChatContainer />
+
   // );
+  
+  return (
+    <ChatErrorBoundary>
+      <ChatContainerWithApi
+        apiConfig={{
+          apiBaseUrl: import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api",
+          enableSSE: true
+        }}
+        request_context={{ "analysisId": analysis_id, 
+                           "opportunityId": opportunity_id }}
+      />
+    </ChatErrorBoundary>
+  );
 }
 
 export default ChatInterface;

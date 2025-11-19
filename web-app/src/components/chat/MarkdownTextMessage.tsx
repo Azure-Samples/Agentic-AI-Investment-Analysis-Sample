@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Bot, User, Maximize2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { Bot, User, Maximize2, BarChart3, TrendingUp, AlertTriangle, Gavel, FileText } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -10,6 +11,7 @@ import {
 } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { MarkdownTextMessage as MarkdownTextMessageType } from "./types";
+import { get } from "http";
 
 interface MarkdownTextMessageProps {
   message: MarkdownTextMessageType;
@@ -26,50 +28,53 @@ const MarkdownTextMessage = ({ message }: MarkdownTextMessageProps) => {
   const isUser = message.role === "user";
 
   // Simple markdown to HTML conversion for preview
-  const renderMarkdownPreview = (text: string) => {
-    return text;
+  const renderMarkdown = (text: string) => {
+    return <ReactMarkdown>{text}</ReactMarkdown>;
   };
 
-  // Render full markdown in dialog
-  const renderMarkdownFull = (text: string) => {
-    // Simple markdown rendering - you can replace this with a proper markdown library like react-markdown
-    const lines = text.split("\n");
-    return lines.map((line, index) => {
-      // Headers
-      if (line.startsWith("### ")) {
-        return <h3 key={index} className="text-lg font-semibold mt-4 mb-2">{line.substring(4)}</h3>;
-      }
-      if (line.startsWith("## ")) {
-        return <h2 key={index} className="text-xl font-semibold mt-4 mb-2">{line.substring(3)}</h2>;
-      }
-      if (line.startsWith("# ")) {
-        return <h1 key={index} className="text-2xl font-bold mt-4 mb-2">{line.substring(2)}</h1>;
-      }
-      // Bold
-      if (line.includes("**")) {
-        const parts = line.split("**");
-        return (
-          <p key={index} className="mb-2">
-            {parts.map((part, i) => (i % 2 === 0 ? part : <strong key={i}>{part}</strong>))}
-          </p>
-        );
-      }
-      // Lists
-      if (line.startsWith("- ") || line.startsWith("* ")) {
-        return <li key={index} className="ml-4 mb-1">{line.substring(2)}</li>;
-      }
-      // Code blocks
-      if (line.startsWith("```")) {
-        return null; // Handle code blocks separately if needed
-      }
-      // Empty lines
-      if (line.trim() === "") {
-        return <br key={index} />;
-      }
-      // Regular text
-      return <p key={index} className="mb-2">{line}</p>;
-    });
+  const getAssistantName = (assistant_id: string) => {
+    switch (assistant_id) {
+      case 'financial_analyst_agent_executor':
+        return 'Financial Analyst Agent';
+      case 'market_analyst_agent_executor':
+        return 'Market Analyst Agent';
+      case 'risk_analyst_agent_executor':
+        return 'Risk Analyst Agent';
+      case 'compliance_analyst_agent_executor':
+        return 'Compliance Analyst Agent';
+      case 'analysis_summarizer':
+        return 'Summary Agent';
+      default:
+        return 'Assistant';
+    }
   };
+
+  const getAssistantIcon = (assistant_id: string) => {
+    switch (assistant_id) {
+      case 'financial_analyst_agent_executor':
+        return <div className="bg-blue-500 p-1.5 rounded-lg flex-shrink-0">
+                  <BarChart3 className="h-3 w-3 text-white" />
+                </div>;
+      case 'market_analyst_agent_executor':
+        return <div className="bg-green-500 p-1.5 rounded-lg flex-shrink-0">
+                  <TrendingUp className="h-3 w-3 text-white" />
+                </div>;
+      case 'risk_analyst_agent_executor':
+        return <div className="bg-orange-500 p-1.5 rounded-lg flex-shrink-0">
+                  <AlertTriangle className="h-3 w-3 text-white" />
+                </div>;
+      case 'compliance_analyst_agent_executor':
+        return <div className="bg-yellow-500 p-1.5 rounded-lg flex-shrink-0">
+                  <Gavel className="h-3 w-3 text-white" />
+                </div>;
+      default:
+        return <div className="bg-purple-500 p-1.5 rounded-lg flex-shrink-0">
+                  <FileText className="h-3 w-3 text-white" />
+                </div>;
+    }
+
+  };
+
 
   return (
     <>
@@ -86,13 +91,27 @@ const MarkdownTextMessage = ({ message }: MarkdownTextMessageProps) => {
               : "bg-muted"
           }`}
         >
+          
+          {message.assistant_id && (
+            
+            <div className="flex items-start space-x-2 flex-1 min-w-0 mb-1.5">
+              {getAssistantIcon(message.assistant_id)}
+              <div className="flex-1 min-w-0">
+                <h4 className="font-semibold text-xs text-foreground leading-tight">
+                  {getAssistantName(message.assistant_id)}
+                </h4>
+              </div>
+            </div>
+          
+          )}
+          
           {message.title && (
             <h4 className="font-semibold text-sm mb-1.5">
               {message.title}
             </h4>
           )}
-          <div className="text-sm whitespace-pre-wrap mb-2">
-            {renderMarkdownPreview(snippet)}
+          <div className="text-xs whitespace-pre-wrap mb-2">
+            {renderMarkdown(snippet)}
           </div>
           {isLongContent && (
             <Button
@@ -118,15 +137,15 @@ const MarkdownTextMessage = ({ message }: MarkdownTextMessageProps) => {
         <DialogContent className="max-w-3xl max-h-[80vh]">
           <DialogHeader>
             <DialogTitle>
-              {message.title || "Full Content"}
+              {getAssistantName(message.assistant_id) || "Full Content"}
             </DialogTitle>
             <DialogDescription>
-              Viewing complete markdown content
+              Viewing full content
             </DialogDescription>
           </DialogHeader>
           <ScrollArea className="h-[60vh] pr-4">
-            <div className="prose prose-sm dark:prose-invert max-w-none">
-              {renderMarkdownFull(message.content)}
+            <div className="max-w-none text-sm">
+              {renderMarkdown(message.content)}
             </div>
           </ScrollArea>
         </DialogContent>

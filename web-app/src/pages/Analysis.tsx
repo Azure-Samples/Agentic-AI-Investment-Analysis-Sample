@@ -527,7 +527,7 @@ const Analysis = () => {
                 {/* Only show if status of workflow is completed */}
                 {analyses.find(a => a.id === selectedRunId)?.status === 'completed' && (
                   <div className="mt-6 mb-6">
-                    <ChatInterface />
+                    <ChatInterface analysis_id={selectedRunId} opportunity_id={opportunityId} />
                   </div>
                 )}
               </>

@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
-import type { Message, TextMessage } from "./types";
+import type { Message, TextMessage, MarkdownTextMessage, EventStatusMessage, ReasoningMessage } from "./types";
 import type { ChatConversation } from "./chatHistoryTypes";
 
 export interface ChatApiConfig {
@@ -16,16 +16,20 @@ export interface ChatMessageRequest {
   context?: Record<string, any>;
 }
 
-export interface StreamChunk {
-  type: "message" | "thinking" | "error" | "complete";
-  content?: string;
-  message?: Message;
+export interface StreamEventMessage {
+  type: "message" | "markdown" | "reasoning" | "error" | "complete" | "workflow_status" | "workflow_completed";
+  executor?: string;
+  message?: string;
+  data?: any;
+  sequence?: number;
+  correlation_id?: string;
+  timestamp?: string;
   error?: string;
-  metadata?: Record<string, any>;
+  additional_context?: Record<string, any>;
 }
 
 export interface UseChatApiReturn {
-  sendMessage: (content: string) => Promise<string | null>;
+  sendMessage: (content: string, context: any) => Promise<string | null>;
   isStreaming: boolean;
   isLoading: boolean;
   error: string | null;
@@ -92,7 +96,7 @@ export const useChatApi = (
     onMessageReceived(errorMsg);
   }, [onError, onMessageReceived]);
 
-  const sendMessageWithSSE = useCallback(async (content: string): Promise<string | null> => {
+  const sendMessageWithSSE = useCallback(async (content: string, context: any): Promise<string | null> => {
     setIsLoading(true);
     setIsStreaming(true);
     setCurrentStreamContent("");
@@ -107,7 +111,7 @@ export const useChatApi = (
         message: content,
         conversationId: conversationIdToSend,
         messageHistory: messages,
-        context: {}
+        context: context
       };
 
       const response = await fetch(`${config.apiBaseUrl}/chat/stream`, {
@@ -143,44 +147,105 @@ export const useChatApi = (
 
       eventSource.onmessage = (event) => {
         try {
-          const chunk: StreamChunk = JSON.parse(event.data);
+          const streamEventMessage: StreamEventMessage = JSON.parse(event.data);
 
-          switch (chunk.type) {
+          switch (streamEventMessage.type) {
+            case "workflow_status":
+              const eventMessage: EventStatusMessage = {
+                  type: "event",
+                  role: "assistant",
+                  eventName: streamEventMessage?.message,
+                  status: streamEventMessage?.data?.status || "in_progress",
+                  description: streamEventMessage?.data?.description,
+                  details: streamEventMessage?.data?.details,
+                  assistant_id: streamEventMessage.executor,
+                  timestamp: streamEventMessage.timestamp ? new Date(streamEventMessage.timestamp) : new Date()
+                };
+                // onMessageReceived(eventMessage);
+              break;
+            
             case "message":
-              if (chunk.content) {
-                accumulatedContent += chunk.content;
+              if (streamEventMessage.message) {
+                accumulatedContent += streamEventMessage.message;
                 setCurrentStreamContent(accumulatedContent);
               }
               break;
 
-            case "thinking":
-              // Handle thinking/reasoning updates
-              if (chunk.message) {
-                onMessageReceived(chunk.message);
+            case "markdown":
+              if (streamEventMessage.executor) {
+                const markdownMessage: MarkdownTextMessage = {
+                  type: "markdown_text",
+                  role: "assistant",
+                  title: "",
+                  content: streamEventMessage?.data,
+                  assistant_id: streamEventMessage.executor,
+                  timestamp: streamEventMessage.timestamp ? new Date(streamEventMessage.timestamp) : new Date()
+                };
+                onMessageReceived(markdownMessage);
               }
               break;
 
-            case "complete":
-              // Stream completed, create final message
-              if (chunk.message) {
-                onMessageReceived(chunk.message);
-              } else if (accumulatedContent) {
-                const finalMessage: TextMessage = {
+            case "reasoning":
+              // Handle thinking/reasoning updates
+              if (streamEventMessage.executor && streamEventMessage.data) {
+                const reasoningMessage: ReasoningMessage = {
+                  type: "reasoning",
                   role: "assistant",
-                  type: "text",
-                  content: accumulatedContent,
-                  timestamp: new Date()
+                  assistant_id: streamEventMessage.executor,
+                  timestamp: streamEventMessage.timestamp ? new Date(streamEventMessage.timestamp) : new Date(),
+                  title: streamEventMessage.data?.name,
+                  description: streamEventMessage.data?.description,
+                  steps: Array.isArray(streamEventMessage.data?.steps) 
+                    ? streamEventMessage.data.steps.map((step: any) => ({
+                        step: step.number || 0,
+                        description: step.task || "",
+                        owner: step.assigned_agent || "",
+                      }))
+                    : [],
+                  message: streamEventMessage.data?.message || ""
                 };
-                onMessageReceived(finalMessage);
+                onMessageReceived(reasoningMessage);
               }
+              break;
+
+            // case "complete":
+            //   // Stream completed, create final message
+            //   if (streamEventMessage.message) {
+            //     onMessageReceived(streamEventMessage.message);
+            //   } else if (accumulatedContent) {
+            //     const finalMessage: TextMessage = {
+            //       role: "assistant",
+            //       type: "text",
+            //       content: accumulatedContent,
+            //       timestamp: new Date()
+            //     };
+            //     onMessageReceived(finalMessage);
+            //   }
+            //   break;
+
+            case "error":
+              if (streamEventMessage.message || streamEventMessage.data) {
+                const errorMsg = streamEventMessage.message || (streamEventMessage.data?.error) || "An unknown error occurred during streaming.";
+                handleError(errorMsg);
+              }
+
+              setCurrentStreamContent("");
+              eventSource.close();
+              setIsStreaming(false);
+              break;
+            
+            case "workflow_completed":
               setCurrentStreamContent("");
               eventSource.close();
               setIsStreaming(false);
               break;
 
-            case "error":
-              throw new Error(chunk.error || "Stream error occurred");
+            default:
+              console.warn("Unknown stream event type:", streamEventMessage.type);
           }
+          
+          
+          
         } catch (parseError) {
           console.error("Error parsing SSE data:", parseError);
         }
@@ -214,7 +279,7 @@ export const useChatApi = (
     }
   }, [config.apiBaseUrl, currentConversationId, messages, onMessageReceived, handleError, onConversationIdReceived]);
 
-  const sendMessageWithPolling = useCallback(async (content: string): Promise<string | null> => {
+  const sendMessageWithPolling = useCallback(async (content: string, context: any): Promise<string | null> => {
     setIsLoading(true);
     setIsStreaming(true);
     setCurrentStreamContent("");
@@ -231,7 +296,7 @@ export const useChatApi = (
         message: content,
         conversationId: conversationIdToSend,
         messageHistory: messages,
-        context: {}
+        context: context
       };
 
       const response = await fetch(`${config.apiBaseUrl}/chat/message`, {
@@ -294,11 +359,11 @@ export const useChatApi = (
     }
   }, [config.apiBaseUrl, currentConversationId, messages, onMessageReceived, handleError, onConversationIdReceived]);
 
-  const sendMessage = useCallback(async (content: string): Promise<string | null> => {
+  const sendMessage = useCallback(async (content: string, context:any): Promise<string | null> => {
     if (config.enableSSE !== false) {
-      return await sendMessageWithSSE(content);
+      return await sendMessageWithSSE(content, context);
     } else {
-      return await sendMessageWithPolling(content);
+      return await sendMessageWithPolling(content, context);
     }
   }, [config.enableSSE, sendMessageWithSSE, sendMessageWithPolling]);
 

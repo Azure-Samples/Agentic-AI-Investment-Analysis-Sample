@@ -16,7 +16,19 @@ const ReasoningMessage = ({ message }: ReasoningMessageProps) => {
         <div className="flex items-center gap-2 mb-2">
           <Brain className="h-3.5 w-3.5 text-purple-500" />
           <h4 className="font-semibold text-foreground text-sm">Thinking Process</h4>
+          {message.title && (
+            <span className="text-xs text-muted-foreground italic">
+              ({message.title})
+            </span>
+          )}
         </div>
+        
+        {message.description && (
+        <div className="flex items-center gap-2 mb-2">
+          <ChevronRight className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
+          <h5 className="text-xs font-medium text-foreground">{message.description}</h5>
+        </div>
+        )}
         
         <div className="space-y-2">
           {message.steps.map((step) => (
@@ -28,11 +40,25 @@ const ReasoningMessage = ({ message }: ReasoningMessageProps) => {
               </div>
               <div className="flex-1">
                 <p className="text-xs text-foreground mb-0.5">{step.description}</p>
-                {step.result && (
+                {step.description && (
                   <div className="flex items-start gap-1.5 mt-0.5">
                     <ChevronRight className="h-3 w-3 text-muted-foreground mt-0.5 flex-shrink-0" />
                     <p className="text-xs text-muted-foreground italic">
-                      {step.result}
+                      {(step.owner === 'financial_analyst_agent') && (
+                        <>(by Financial Analyst Agent)</>
+                      )}
+                      {(step.owner === 'market_analyst_agent') && (
+                        <>(by Market Analyst Agent)</>
+                      )}
+                      {(step.owner === 'risk_analyst_agent') && (
+                        <>(by Risk Analyst Agent)</>
+                      )}
+                      {(step.owner === 'compliance_analyst_agent') && (
+                        <>(by Compliance Analyst Agent)</>
+                      )}
+                      {!step.owner && (
+                        <>(by System)</>
+                      )}
                     </p>
                   </div>
                 )}
@@ -41,11 +67,11 @@ const ReasoningMessage = ({ message }: ReasoningMessageProps) => {
           ))}
         </div>
 
-        {message.conclusion && (
+        {message.message && (
           <div className="mt-2 pt-2 border-t border-purple-500/20">
             <p className="text-xs font-medium text-foreground">
-              <span className="text-purple-600 dark:text-purple-400">Conclusion: </span>
-              {message.conclusion}
+              <span className="text-purple-600 dark:text-purple-400"></span>
+              {message.message}
             </p>
           </div>
         )}

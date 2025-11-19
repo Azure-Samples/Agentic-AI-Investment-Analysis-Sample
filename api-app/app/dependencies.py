@@ -57,10 +57,19 @@ async def get_analysis_workflow_execution_service():
                                            opportunity_service=await get_opportunity_service(),
                                            workflow_events_service=await get_analysis_workflow_events_service())
 
+async def get_what_if_message_repository():
+    """Dependency to get WhatIfMessageRepository"""
+    from app.database.repositories import WhatIfMessageRepository
+    global cosmos_client
+    return WhatIfMessageRepository(cosmos_client)
+
 async def get_what_if_workflow_executor_service():
     """Dependency to get WhatIfWorkflowExecutorService"""
     from app.services.whatif_workflow_executor_service import WhatIfWorkflowExecutorService
-    return WhatIfWorkflowExecutorService(analysis_service=await get_analysis_service())
+    service = WhatIfWorkflowExecutorService(analysis_service=await get_analysis_service(), 
+                                            what_if_message_repository=await get_what_if_message_repository())
+    await service.initialize()
+    return service
 
 async def get_sse_event_queue_for_session(session_id: str):
     """Get the event queue for a specific session (alias for global queue)"""
