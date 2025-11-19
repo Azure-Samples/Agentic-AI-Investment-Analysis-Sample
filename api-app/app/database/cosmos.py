@@ -22,24 +22,38 @@ class CosmosDBClient:
         
     async def connect(self):
         """Initialize Cosmos DB connection"""
+        
+        logger.info("Connecting to Cosmos DB...")
+        
         try:
             self.client = CosmosClient(
                 url=self.endpoint,
                 credential=self.credential
             )
             
+            logger.info("Attempting to create or get database...")
             # Create database if it doesn't exist
-            self.database_proxy = await self.client.create_database_if_not_exists(
-                id=self.database
+            self.database_proxy = self.client.get_database_client(
+                database=self.database
             )
+            logger.info(f"Database '{self.database}' is ready.")
             
+            
+            logger.info("Initializing containers...")
             # Initialize containers
-            await self._initialize_containers()
+            self._initialize_containers()
+            logger.info(f"Initialized {len(self.containers)} containers.")
+            
             
             logger.info("Successfully connected to Cosmos DB")
-            
+        
+        except exceptions.CosmosHttpResponseError as e:
+            logger.error(f"Cosmos DB HTTP error: {str(e)}")
+            logger.exception(e)
+            raise
         except Exception as e:
             logger.error(f"Failed to connect to or initialize Cosmos DB: {str(e)}")
+            logger.exception(e)
             raise
     
     async def close(self):
@@ -51,7 +65,7 @@ class CosmosDBClient:
             self.containers = {}
             logger.info("Cosmos DB connection closed")
 
-    async def _initialize_containers(self):
+    def _initialize_containers(self):
         """Initialize all required containers"""
         containers_config = [
             {
@@ -87,22 +101,14 @@ class CosmosDBClient:
         ]
         
         for container_config in containers_config:
-            
-            await self._ensure_container(container_config["id"], container_config["partition_key"])
-            
+            self._load_container(container_config["id"])
             logger.info(f"Container '{container_config['id']}' ready.")
+            
     
-    
-    async def _ensure_container(self, container_name: str, partition_key: str = "/id"):
+    def _load_container(self, container_name: str):
         """Ensure the container is initialized"""
         if container_name not in self.containers:
-            try:
-                container = await self.database_proxy.create_container(
-                    id=container_name,
-                    partition_key=PartitionKey(path=partition_key)
-                )
-            except exceptions.CosmosResourceExistsError:
-                container = self.database_proxy.get_container_client(container_name)
+            container = self.database_proxy.get_container_client(container=container_name)
 
             self.containers[container_name] = container
 

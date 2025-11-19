@@ -96,15 +96,22 @@ async def get_chat_client() -> BaseChatClient:
 
 async def initialize_all():
     """Initialize all dependencies"""
-    global cosmos_client
-    if not cosmos_client:
-        cosmos_client = CosmosDBClient(settings.COSMOS_DB_DATABASE_NAME, settings.COSMOS_DB_ENDPOINT, await get_azure_credential_async())
-        await cosmos_client.connect()
-    
-    # Initialize blob storage
-    from app.utils.blob_storage import get_blob_storage_service
-    await get_blob_storage_service()
+    print("Initializing dependencies...")
+    try:
+        global cosmos_client
+        if not cosmos_client:
+            cosmos_client = CosmosDBClient(settings.COSMOS_DB_DATABASE_NAME, settings.COSMOS_DB_ENDPOINT, await get_azure_credential_async())
+            await cosmos_client.connect()
         
+        # Initialize blob storage
+        from app.utils.blob_storage import get_blob_storage_service
+        await get_blob_storage_service()
+    except Exception as e:
+        print(f"Error during dependencies initialization: {str(e)}")
+        print("Stack trace:")
+        import traceback
+        traceback.print_exc()
+        raise
 
 async def close_all():
     """Close all dependencies"""

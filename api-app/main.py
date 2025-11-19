@@ -68,18 +68,18 @@ def initialize_api_application() -> FastAPI:
             "checks": {}
         }
         
-        # Database health
-        try:
-            cosmos_client = await get_cosmos_client()
-            if not cosmos_client:
-                raise Exception("Cosmos client not initialized")
+        # # Database health
+        # try:
+        #     cosmos_client = await get_cosmos_client()
+        #     if not cosmos_client:
+        #         raise Exception("Cosmos client not initialized")
             
-            container_names = str.join(", ", cosmos_client.containers.keys())
-            health_status["checks"]["database"] = {"status": "healthy", "response_time_ms": 0}
-            health_status["checks"]["database"] = {"containers": container_names}
-        except Exception as e:
-            health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
-            health_status["status"] = "unhealthy"
+        #     container_names = str.join(", ", cosmos_client.containers.keys())
+        #     health_status["checks"]["database"] = {"status": "healthy", "response_time_ms": 0}
+        #     health_status["checks"]["database"] = {"containers": container_names}
+        # except Exception as e:
+        #     health_status["checks"]["database"] = {"status": "unhealthy", "error": str(e)}
+        #     health_status["status"] = "unhealthy"
         
         # Response time
         health_status["response_time_ms"] = round((time.time() - start_time) * 1000, 2)

@@ -53,7 +53,7 @@ def setup_logger():
     # # Disable the App Insights VERY verbose logger
     logging.getLogger('azure.core').setLevel(logging.WARNING)
     logging.getLogger('openai').setLevel(logging.WARNING)
-    logging.getLogger('azure.identity').setLevel(logging.INFO)
+    logging.getLogger('azure.identity').setLevel(logging.WARNING)
     logging.getLogger('httpcore').setLevel(logging.WARNING)
     logging.getLogger('agent_framework').setLevel(logging.INFO)
     logging.getLogger('httpx').setLevel(logging.WARNING)
