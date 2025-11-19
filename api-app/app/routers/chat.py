@@ -206,7 +206,7 @@ async def initiate_stream(
     analysis_id = request.context.get("analysisId")
     opportunity_id = request.context.get("opportunityId")
     if not analysis_id or not opportunity_id:
-        raise HTTPException(status_code=400, detail="analysisId and opportunityId must be provided in context")
+        raise HTTPException(status_code=400, detail="analysisId and opportunityId must be provided in request's context property.")
     
     # Store the request data for the stream endpoint to use
     active_streams[stream_id] = {
@@ -217,7 +217,7 @@ async def initiate_stream(
     
     # Get the event queue for this client/session
     event_queue = await get_sse_event_queue_for_session(stream_id)
-        
+    
     # Execute workflow in background
     workflow_executor_function = execution_service.execute_workflow
     background_tasks.add_task(
@@ -255,19 +255,6 @@ async def stream_response(stream_id: str):
         await close_sse_event_queue_for_session(stream_id)
     
     async def event_generator() -> AsyncGenerator[str, None]:
-        # try:
-        #     async for chunk in process_message_with_streaming(original_request, stream_id):
-        #         # Check if client disconnected
-        #         if await request.is_disconnected():
-        #             break
-        #         yield chunk
-        # except Exception as e:
-        #     error_chunk = StreamChunk(type="error", error=str(e))
-        #     yield f"{error_chunk.model_dump_json()}\n\n"
-        # finally:
-        #     # Cleanup stream data after streaming completes
-        #     if stream_id in active_streams:
-        #         del active_streams[stream_id]
                 
         try:
             # Send all existing events
@@ -328,24 +315,6 @@ async def send_message(request: ChatMessageRequest):
 
 # Thread Management Endpoints
 
-@router.post("/threads")
-async def create_thread(title: Optional[str] = None, initialMessage: Optional[str] = None):
-    """Create a new chat thread"""
-    thread_id = str(uuid.uuid4())
-    thread = {
-        "id": thread_id,
-        "title": title or "New Conversation",
-        "preview": initialMessage or "Start a new conversation...",
-        "timestamp": datetime.utcnow().isoformat(),
-        "messageCount": 0,
-        "messages": [],
-        "tags": ["New"]
-    }
-    threads_storage[thread_id] = thread
-    
-    return {"thread": thread, "threadId": thread_id}
-
-
 @router.get("/threads/{thread_id}")
 async def get_thread(thread_id: str):
     """Get a specific thread by ID"""
@@ -355,9 +324,9 @@ async def get_thread(thread_id: str):
     return {"thread": threads_storage[thread_id]}
 
 
-@router.get("/threads")
-async def list_threads(page: int = 1, pageSize: int = 20):
-    """List all threads"""
+@router.get("/coversations")
+async def list_conversations(page: int = 1, pageSize: int = 20):
+    """List all conversations with pagination"""
     threads_list = list(threads_storage.values())
     total = len(threads_list)
     

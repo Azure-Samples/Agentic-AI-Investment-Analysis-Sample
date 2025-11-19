@@ -14,33 +14,6 @@ from app.models import StreamEventMessage
 
 logger = logging.getLogger("app.utils.event_queue")
 
-# class EventMessage(BaseModel):
-#     """Represents a re-modeled workflow event into an event message suitable for SSE"""
-
-#     type: str = Field(description="Type of the event")
-#     executor: Optional[str] = Field(None, description="ID of the executor")
-#     data: Optional[Any] = Field(None, description="Event data payload")
-#     message: Optional[str] = Field(None, description="Optional message")
-#     sequence: Optional[int] = Field(None, description="Sequence number of the event")
-#     timestamp: Optional[str] = Field(datetime.now(timezone.utc).isoformat(), description="Timestamp of the event")
-        
-#     def to_dict(self) -> Dict[str, Any]:
-#         """Convert event to dictionary"""
-#         return {
-#             "type": self.type,
-#             "executor": self.executor,
-#             "data": self.data.to_dict() if self.data and hasattr(self.data, 'to_dict') else self.data,
-#             "message": self.message,
-#             "sequence": self.sequence,
-#             "timestamp": self.timestamp
-#         }
-    
-#     def to_sse_format(self) -> str:
-#         """Format event for SSE transmission"""
-#         event_dict = self.to_dict()
-#         data_json = json.dumps(event_dict)
-#         return f"data: {data_json}\n\n"
-
 
 class SSEStreamEventQueue:
     """Manages sse stream event queues for workflows with persistence"""

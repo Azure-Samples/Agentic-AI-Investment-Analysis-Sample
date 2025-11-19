@@ -27,12 +27,15 @@ export interface ChatContainerProps {
    * Initial messages (optional)
    */
   initialMessages?: Message[];
+  
+  request_context?: any;
 }
 
 const ChatContainerWithApi = ({
   apiConfig,
   initialConversations = [],
-  initialMessages = []
+  initialMessages = [],
+  request_context = {}
 }: ChatContainerProps) => {
   // Chat conversation history state
   const [conversations, setConversations] = useState<ChatConversation[]>(initialConversations);
@@ -173,7 +176,7 @@ const ChatContainerWithApi = ({
     }
     
     // Send via API - conversation ID will be received via onConversationIdReceived callback
-    await chatApi.sendMessage(input);
+    await chatApi.sendMessage(input, request_context);
   };
 
   // Reset chat to initial state, triggered by user action

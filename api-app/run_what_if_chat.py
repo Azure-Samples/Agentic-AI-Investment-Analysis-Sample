@@ -19,30 +19,33 @@ from datetime import datetime
 
 from agent_framework import AgentRunResponseUpdate, ChatMessage, WorkflowOutputEvent
 
-from app.what_if_chat.what_if_workflow import WhatIfChatWorkflow
-from app.dependencies import get_chat_client
+from app.what_if_chat import WhatIfChatWorkflow, WhatIfChatWorkflowInputData, ConversationContext
+from app.dependencies import get_chat_client, get_cosmos_client, initialize_all, close_all
 from app.utils.logging import setup_logger
 from app.core.config import settings
 
 # Setup logging
 setup_logger()
 
-async def test_single_conversation(chat_client, thread_id: str, message: str, conversation_num: int):
+async def test_single_conversation(workflow: WhatIfChatWorkflow, conversation_id: str, message: str, conversation_num: int):
     """Test a single conversation with the workflow"""
     
     print(f"\n💬 Conversation #{conversation_num}")
-    print(f"   Thread ID: {thread_id}")
+    print(f"   Thread ID: {conversation_id}")
     print(f"   Message: {message}")
     print("-" * 80)
     
     event_count = 0
     
-    # Create a new workflow instance with the thread_id
-    workflow = WhatIfChatWorkflow(chat_client=chat_client, thread_id=thread_id)
-    await workflow.initialize_workflow()
-    
     try:
-        async for event in workflow.run_workflow_stream(input_message=ChatMessage(role="user", text=message)):
+        async for event in workflow.run_workflow_stream(input=WhatIfChatWorkflowInputData(
+            analysis=None,
+            conversation_context=ConversationContext(
+                conversation_id=conversation_id,
+                message_history=[]
+            ),
+            input_messages=message
+        )):
             event_count += 1
             
             # Handle different event types
@@ -88,6 +91,9 @@ async def test_workflow():
     print("🚀 WHAT-IF CHAT WORKFLOW TEST")
     print("="*80 + "\n")
     
+    print("🔧 Step 0: Initializing dependencies...")
+    await initialize_all()
+    
     # Step 1: Initialize chat client
     print("🔧 Step 1: Initializing chat client...")
     try:
@@ -104,6 +110,11 @@ async def test_workflow():
         return
     print()
     
+    print("🔧 Step 1b: Initializing What-If Chat Workflow...")
+    # Create a new workflow instance with the thread_id
+    workflow = WhatIfChatWorkflow(chat_client=chat_client)
+    await workflow.initialize_workflow()
+    
     
     # Step 2: Test with a new thread (first conversation)
     print("▶️  Step 2: Testing with NEW thread - First conversation")
@@ -112,7 +123,7 @@ async def test_workflow():
     thread_id_1 = f"test-thread-{datetime.now().strftime('%Y%m%d-%H%M%S')}"
     message_1 = "What if TechCorp Inc. acquires a major competitor? How would this impact their Series B valuation?"
     
-    events_1 = await test_single_conversation(chat_client, thread_id_1, message_1, 1)
+    events_1 = await test_single_conversation(workflow, conversation_id=thread_id_1, message=message_1, conversation_num=1)
     
     # Step 3: Test follow-up in the same thread
     print("\n▶️  Step 3: Testing FOLLOW-UP in same thread - Second conversation")
@@ -120,7 +131,7 @@ async def test_workflow():
     
     message_2 = "What if the acquisition is declined by regulators?"
     
-    events_2 = await test_single_conversation(chat_client, thread_id_1, message_2, 2)
+    events_2 = await test_single_conversation(workflow, conversation_id=thread_id_1, message=message_2, conversation_num=2)
     
     # Step 4: Test another follow-up in the same thread
     print("\n▶️  Step 4: Testing ANOTHER FOLLOW-UP in same thread - Third conversation")
@@ -128,7 +139,7 @@ async def test_workflow():
     
     message_3 = "Can you list back the key questions asked to you in this conversation?"
     
-    events_3 = await test_single_conversation(chat_client, thread_id_1, message_3, 3)
+    events_3 = await test_single_conversation(workflow, conversation_id=thread_id_1, message=message_3, conversation_num=3)
     
     # Step 5: Test with a different thread (new conversation)
     print("\n▶️  Step 5: Testing with DIFFERENT thread - New conversation")
@@ -137,7 +148,7 @@ async def test_workflow():
     thread_id_2 = f"test-thread-{datetime.now().strftime('%Y%m%d-%H%M%S')}-2"
     message_4 = "@financial_analyst_agent: What is the financial impact of a 15% increase in interest rates on mid-stage tech startups?"
     
-    events_4 = await test_single_conversation(chat_client, thread_id_2, message_4, 4)
+    events_4 = await test_single_conversation(workflow, conversation_id=thread_id_2, message=message_4, conversation_num=4)
     
     # Step 6: Display results summary
     print("\n📊 Step 6: Test Summary")
@@ -155,16 +166,17 @@ async def test_workflow():
     print(f"   Total events processed: {events_1 + events_2 + events_3 + events_4}")
     print()
     
+    print("🔧 Step 7: Cleaning up resources...")
+    await close_all()
+    
     print("✅ What-If Chat Workflow test completed successfully!")
     print("="*80 + "\n")
 
 
 def main():
     """Main entry point"""
-    
     print("\n🚀 Running What-If Chat Workflow Test...\n")
     asyncio.run(test_workflow())
-
 
 if __name__ == "__main__":
     main()

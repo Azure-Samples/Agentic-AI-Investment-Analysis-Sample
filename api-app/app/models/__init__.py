@@ -7,6 +7,7 @@ from ._analysis import Analysis
 from ._opportunity import Opportunity
 from ._analysis_workflow_event import AnalysisWorkflowEvent
 from ._stream_event_message import StreamEventMessage
+from ._what_if_message import WhatIfMessage, WhatIfConversation
 try:
     __version__ = importlib.metadata.version(__name__)
 except importlib.metadata.PackageNotFoundError:
@@ -20,4 +21,6 @@ __all__ = [
             "Opportunity",
             "AnalysisWorkflowEvent",
             "StreamEventMessage",
+            "WhatIfMessage",
+            "WhatIfConversation",
           ]

@@ -4,6 +4,7 @@ export type MessageType = "text" | "card" | "event" | "agent_output" | "reasonin
 
 export interface BaseMessage {
   role: MessageRole;
+  assistant_id?: string;
   type: MessageType;
   timestamp?: Date;
 }
@@ -50,12 +51,14 @@ export interface AgentOutputMessage extends BaseMessage {
 
 export interface ReasoningMessage extends BaseMessage {
   type: "reasoning";
+  title?: string;
+  description?: string;
   steps: Array<{
     step: number;
     description: string;
-    result?: string;
+    owner?: string;
   }>;
-  conclusion?: string;
+  message?: string;
 }
 
 export type FeedbackType = "approval" | "info_request" | "choice" | "input";

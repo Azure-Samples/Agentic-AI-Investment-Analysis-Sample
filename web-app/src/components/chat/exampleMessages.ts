@@ -60,25 +60,25 @@ export const exampleMessages: Message[] = [
       {
         step: 1,
         description: "Adjust market size projections based on 10% CAGR",
-        result: "Reduced addressable market by $800M over 5 years"
+        owner: "analysis_agent",
       },
       {
         step: 2,
         description: "Recalculate company revenue projections",
-        result: "Revenue growth drops from 45% to 32% YoY"
+        owner: "analysis_agent",
       },
       {
         step: 3,
         description: "Update valuation multiples",
-        result: "Valuation multiple adjusts from 6.5x to 5.2x revenue"
+        owner: "analysis_agent",
       },
       {
         step: 4,
         description: "Reassess risk-reward profile",
-        result: "Risk increases slightly, but still within acceptable range"
+        owner: "analysis_agent",
       }
     ],
-    conclusion: "Even with conservative 10% market growth, the opportunity remains attractive with adjusted ROI of 21% vs original 28%."
+    message: "Even with conservative 10% market growth, the opportunity remains attractive with adjusted ROI of 21% vs original 28%."
   },
   // Multiple Choice for Strategy
   {

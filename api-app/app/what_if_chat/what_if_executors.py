@@ -4,36 +4,53 @@ import logging
 from collections.abc import Collection
 from typing import Any, Never
 import uuid
-from pydantic import BaseModel
 
-from agent_framework import AgentRunResponse, AgentThread, ChatMessage, ChatMessageStoreProtocol, Executor, WorkflowContext, handler
+from agent_framework import AgentRunResponse, AgentRunResponseUpdate, AgentThread, ChatMessage, ChatMessageStoreProtocol, Executor, WorkflowContext, handler
 from agent_framework._threads import ChatMessageStoreState
 from agent_framework import BaseChatClient, ChatAgent, Workflow, WorkflowBuilder
 
+from app.database.repositories import WhatIfMessageRepository
+from app.models import WhatIfMessage, Analysis
 
-from app.dependencies import get_chat_client
+from .what_if_models import AnalystAgentOutput, ConversationContext, PlanningAgentStepResponseModel, PlanningAgentResponseModel, ExecutionPlan, WhatIfChatWorkflowInputData
 
 logger = logging.getLogger("app.what_if_chat.chat_workflow")
 
+# region Conversation History Retriever
+
+class ConversationHistoryRetriever(Executor):
+    """Retrieves conversation history for a given conversation ID."""
+    
+    def __init__(self, conversation_store: WhatIfMessageRepository = None, id: str = "conversation_history_retriever"):
+        self.conversation_store = conversation_store
+        
+        super().__init__(id=id)
+    
+    @handler
+    async def handle(self, input: WhatIfChatWorkflowInputData, ctx: WorkflowContext[WhatIfChatWorkflowInputData, None]) -> Any:
+        logger.info("ConversationHistoryRetriever: Starting execution")
+        
+        # Retrieve conversation history
+        if self.conversation_store:
+            history_messages: Collection[WhatIfMessage] = await self.conversation_store.get_messages_by_conversation(input.conversation_id)
+            
+            logger.debug(f"ConversationHistoryRetriever: Retrieved {len(history_messages)} messages from history")
+            
+            if history_messages and len(history_messages) > 0:
+                history_messages = sorted(history_messages, key=lambda msg: msg.sequence_number)
+                ctx.set_shared_state(key="conversation_context", state=ConversationContext(
+                    conversation_id=input.conversation_id,
+                    message_history=[ChatMessage(role=msg.role, text=msg.text, author_name=msg.author) for msg in history_messages]
+                ))
+        
+        await ctx.send_message(input)
+        
+        logger.info("ConversationHistoryRetriever: Execution completed")
+
+# end region
+
 ######################################
 # region Planning Agent
-
-class PlanningAgentStepResponseModel(BaseModel):
-    number: int
-    task: str
-    assigned_agent: str
-
-class PlanningAgentResponseModel(BaseModel):
-    name: str
-    description: str
-    steps: list[PlanningAgentStepResponseModel]
-
-@dataclass
-class PlanningAgentOutputModel:
-    agent_id: str
-    input_messages: ChatMessage | list[ChatMessage]
-    plan: PlanningAgentResponseModel
-
 
 class PlanningAgentExecutor(Executor):
     
@@ -52,9 +69,28 @@ class PlanningAgentExecutor(Executor):
         )
         return agent
     
+    async def try_save_shared_context(self, ctx: WorkflowContext[Any, Any], conversation_context: ConversationContext) -> None:
+        """Save conversation context to shared state"""
+        
+        if conversation_context is None or conversation_context.message_history is None or len(conversation_context.message_history) == 0:
+            return
+        
+        await ctx.set_shared_state(key="conversation_context", value=conversation_context)
+    
+    async def create_thread_from_context(self, agent: ChatAgent, conversation_context: ConversationContext) -> AgentThread:
+        """Create an AgentThread from the workflow context"""
+        thread = agent.get_new_thread()
+        if conversation_context is not None and conversation_context.message_history is not None:
+            for msg in conversation_context.message_history:
+                await thread.on_new_messages(msg)
+        return thread
+    
     @handler
-    async def handle(self, input_messages: ChatMessage | list[ChatMessage], ctx: WorkflowContext[PlanningAgentOutputModel, PlanningAgentResponseModel]) -> Any:
+    async def handle(self, input: WhatIfChatWorkflowInputData, ctx: WorkflowContext[ExecutionPlan, PlanningAgentResponseModel]) -> Any:
         logger.info("PlanningAgentExecutor: Starting execution")
+        
+        # Save conversation context to shared state
+        await self.try_save_shared_context(ctx, input.conversation_context)
         
         _agent = await self.create_agent(
             id="planning_agent",
@@ -68,8 +104,10 @@ class PlanningAgentExecutor(Executor):
                             - If the user did not address any particular agent, consider involving multiple agents as needed.
                             - Each step should be clear and concise, outlining what needs to be done and which agent is responsible for that step.
                             - Ensure that the steps are logically ordered to facilitate a coherent analysis process.
+                            - Each agent should have a specific role in the analysis, and steps should leverage their expertise accordingly.
+                            - There should be at maximum of 5 steps in the plan with one agent assigned per step.
                             - If the user's input is vague or lacks detail, create steps that include gathering additional information as necessary.
-                            - If the user's input is irrelevant or off-topic, then don't create any steps, and respond politely asking the user to stay on topic.
+                            - If the user's input is irrelevant or off-topic, then don't create any steps and respond with a message politely asking the user to stay on topic.
                             
                             ## SPECIALIZED AGENTS: 
                             The agents available to you are:
@@ -86,10 +124,11 @@ class PlanningAgentExecutor(Executor):
                             
                             # OUTPUT FORMAT:
                             Analyze the input messages and create a structured plan in JSON format.
-                            Respond in the following JSON format:
+                            Respond in the following JSON format only:
                             {
                                 "name": "<Name of the analysis>",
                                 "description": "<Brief description of the analysis>",
+                                "message": "<A summary message to the user about the plan or ask clarification if needed>",
                                 "steps": [
                                     {
                                         "number": <Step number>,
@@ -101,25 +140,29 @@ class PlanningAgentExecutor(Executor):
                             }
             """
         )
-        
-        _response: AgentRunResponse = await _agent.run(input_messages, response_format=PlanningAgentResponseModel)
+                
+        _thread = await self.create_thread_from_context(_agent, input.conversation_context)
+                
+        _response: AgentRunResponse = await _agent.run(input.input_messages, thread=_thread, response_format=PlanningAgentResponseModel)
         
         await ctx.yield_output(_response.value)
         
-        _output = PlanningAgentOutputModel(
+        _output = ExecutionPlan(
             agent_id=_agent.id,
-            input_messages=input_messages,
+            analysis=input.analysis,
+            input_messages=input.input_messages,
             plan=_response.value
         )
         
         await ctx.send_message(_output)
         
         logger.info("PlanningAgentExecutor: Execution completed")
+        
 # end region
 
 ######################################
 # region Financial Agent
-        
+
 class FinancialAgentExecutor(Executor):
     def __init__(self, chat_client: BaseChatClient, id: str = "financial_analyst_agent_executor"):
         self.chat_client = chat_client
@@ -136,8 +179,20 @@ class FinancialAgentExecutor(Executor):
         )
         return agent
     
+    async def create_thread_from_context(self, agent: ChatAgent, ctx: WorkflowContext[Any, Any]) -> AgentThread:
+        """Create an AgentThread from the workflow context"""
+        thread = agent.get_new_thread()
+        if not await ctx.shared_state.has("conversation_context"):
+            return thread
+        
+        conversation_context: ConversationContext = await ctx.get_shared_state(key="conversation_context")
+        if conversation_context is not None and conversation_context.message_history is not None:
+            for msg in conversation_context.message_history:
+                await thread.on_new_messages(msg)
+        return thread
+    
     @handler
-    async def handle(self, input: PlanningAgentOutputModel, ctx: WorkflowContext[dict[str, str|AgentRunResponse], str]) -> Any:
+    async def handle(self, input: ExecutionPlan, ctx: WorkflowContext[AnalystAgentOutput, str]) -> Any:
         logger.info("FinancialAgentExecutor: Starting execution")
         
         # check to see if this agent is addressed in the plan steps
@@ -145,7 +200,6 @@ class FinancialAgentExecutor(Executor):
         for step in input.plan.steps:
             if step.assigned_agent.lower() in ["financial analyst agent", "financial_analyst_agent", "finance-agent", "finance agent"]:
                 addressed_in_steps.append(step)
-        
         
         logger.debug(f"FinancialAgentExecutor: Addressed in steps: {addressed_in_steps}")
         
@@ -166,11 +220,25 @@ class FinancialAgentExecutor(Executor):
                 """
             )
             
-            _response: AgentRunResponse = await _agent.run(step.task)
+            _thread = await self.create_thread_from_context(_agent, ctx)
+            
+            # _all_response_updates: list[AgentRunResponseUpdate] = []
+            # async for event in _agent.run_stream(messages=step.task, thread=_thread):
+            #     if isinstance(event, AgentRunResponseUpdate):
+            #         _response_delta = event.text
+            #         _all_response_updates.append(event)
+            #         await ctx.yield_output(_response_delta)
+                    
+            # _response: AgentRunResponse = AgentRunResponse.from_agent_run_response_updates(_all_response_updates)
+            
+            _response: AgentRunResponse = await _agent.run(messages=step.task, thread=_thread)
             
             await ctx.yield_output(_response.text)
             
-            await ctx.send_message({"id": self.id, "response": _response})
+            await ctx.send_message(AnalystAgentOutput(
+                agent_id=self.id,
+                response=_response
+            ))
         
         logger.info("FinancialAgentExecutor: Execution completed")
 
@@ -195,8 +263,20 @@ class RiskAgentExecutor(Executor):
         )
         return agent
     
+    async def create_thread_from_context(self, agent: ChatAgent, ctx: WorkflowContext[Any, Any]) -> AgentThread:
+        """Create an AgentThread from the workflow context"""
+        thread = agent.get_new_thread()
+        if not await ctx.shared_state.has("conversation_context"):
+            return thread
+        
+        conversation_context: ConversationContext = await ctx.get_shared_state(key="conversation_context")
+        if conversation_context is not None and conversation_context.message_history is not None:
+            for msg in conversation_context.message_history:
+                await thread.on_new_messages(msg)
+        return thread
+    
     @handler
-    async def handle(self, input: PlanningAgentOutputModel, ctx: WorkflowContext[dict[str, str|AgentRunResponse], str]) -> Any:
+    async def handle(self, input: ExecutionPlan, ctx: WorkflowContext[AnalystAgentOutput, str]) -> Any:
         logger.info("RiskAgentExecutor: Starting execution")
         
         # check to see if this agent is addressed in the plan steps
@@ -222,11 +302,14 @@ class RiskAgentExecutor(Executor):
                 """
             )
             
-            _response: AgentRunResponse = await _agent.run(step.task)
+            _thread = await self.create_thread_from_context(_agent, ctx)
+            _response: AgentRunResponse = await _agent.run(messages=step.task, thread=_thread)
             
             await ctx.yield_output(_response.text)
             
-            await ctx.send_message({"id": self.id, "response": _response})
+            await ctx.send_message(AnalystAgentOutput(agent_id=self.id, 
+                                                      response=_response)
+            )
         
         logger.info("RiskAgentExecutor: Execution completed")
 
@@ -251,8 +334,20 @@ class MarketAgentExecutor(Executor):
         )
         return agent
     
+    async def create_thread_from_context(self, agent: ChatAgent, ctx: WorkflowContext[Any, Any]) -> AgentThread:
+        """Create an AgentThread from the workflow context"""
+        thread = agent.get_new_thread()
+        if not await ctx.shared_state.has("conversation_context"):
+            return thread
+        
+        conversation_context: ConversationContext = await ctx.get_shared_state(key="conversation_context")
+        if conversation_context is not None and conversation_context.message_history is not None:
+            for msg in conversation_context.message_history:
+                await thread.on_new_messages(msg)
+        return thread
+    
     @handler
-    async def handle(self, input: PlanningAgentOutputModel, ctx: WorkflowContext[dict[str, str|AgentRunResponse], str]) -> Any:
+    async def handle(self, input: ExecutionPlan, ctx: WorkflowContext[AnalystAgentOutput, str]) -> Any:
         logger.info("MarketAgentExecutor: Starting execution")
         
         # check to see if this agent is addressed in the plan steps
@@ -278,11 +373,12 @@ class MarketAgentExecutor(Executor):
                 """
             )
             
-            _response: AgentRunResponse = await _agent.run(step.task)
+            _thread = await self.create_thread_from_context(_agent, ctx)
+            _response: AgentRunResponse = await _agent.run(messages=step.task, thread=_thread)
             
             await ctx.yield_output(_response.text)
             
-            await ctx.send_message({"id": self.id, "response": _response})
+            await ctx.send_message(AnalystAgentOutput(agent_id=self.id, response=_response))
         
         logger.info("MarketAgentExecutor: Execution completed")
 # end region
@@ -306,8 +402,20 @@ class ComplianceAgentExecutor(Executor):
         )
         return agent
     
+    async def create_thread_from_context(self, agent: ChatAgent, ctx: WorkflowContext[Any, Any]) -> AgentThread:
+        """Create an AgentThread from the workflow context"""
+        thread = agent.get_new_thread()
+        if not await ctx.shared_state.has("conversation_context"):
+            return thread
+        
+        conversation_context: ConversationContext = await ctx.get_shared_state(key="conversation_context")
+        if conversation_context is not None and conversation_context.message_history is not None:
+            for msg in conversation_context.message_history:
+                await thread.on_new_messages(msg)
+        return thread
+    
     @handler
-    async def handle(self, input: PlanningAgentOutputModel, ctx: WorkflowContext[dict[str, str|AgentRunResponse], str]) -> Any:
+    async def handle(self, input: ExecutionPlan, ctx: WorkflowContext[AnalystAgentOutput, str]) -> Any:
         logger.info("ComplianceAgentExecutor: Starting execution")
         
         # check to see if this agent is addressed in the plan steps
@@ -333,11 +441,12 @@ class ComplianceAgentExecutor(Executor):
                 """
             )
             
-            _response: AgentRunResponse = await _agent.run(step.task)
+            _thread = await self.create_thread_from_context(_agent, ctx)
+            _response: AgentRunResponse = await _agent.run(messages=step.task, thread=_thread)
             
             await ctx.yield_output(_response.text)
             
-            await ctx.send_message({"id": self.id, "response": _response})
+            await ctx.send_message(AnalystAgentOutput(agent_id=self.id, response=_response))
         
         logger.info("ComplianceAgentExecutor: Execution completed")
 # end region
@@ -364,7 +473,7 @@ class AnalysisSummarizer(Executor):
         return agent
 
     @handler
-    async def aggregate(self, analyst_results: list[dict[str, str|AgentRunResponse]], ctx: WorkflowContext[Never, str]) -> None:
+    async def aggregate(self, analyst_outputs: list[AnalystAgentOutput], ctx: WorkflowContext[Never, str]) -> None:
         """Aggregate responses from expert agents into a consolidated analysis."""
         
         logger.info("SummarizerAgentExecutor: Starting execution")
@@ -388,9 +497,9 @@ class AnalysisSummarizer(Executor):
         # Combine the analysis results into a single input for the summarizer agent
         # Map each AgentRunResponse to its text content
         
-        logger.debug(f"SummarizerAgentExecutor: Input analyst results: {analyst_results}")
+        logger.debug(f"SummarizerAgentExecutor: Input analyst results: {analyst_outputs}")
         
-        agent_responses = [f"{result['id']}: {result['response'].text}" for result in analyst_results]
+        agent_responses = [f"{result.agent_id}: {result.response.text}" for result in analyst_outputs]
         combined_analysis = "\n\n".join(agent_responses)
         
         _response: AgentRunResponse = await _agent.run(combined_analysis)

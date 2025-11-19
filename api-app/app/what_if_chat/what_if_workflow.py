@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 import logging
 
 from collections.abc import Collection
@@ -8,9 +9,11 @@ from agent_framework import AgentThread, ChatMessage, ChatMessageStoreProtocol
 from agent_framework._threads import ChatMessageStoreState
 from agent_framework import BaseChatClient, ChatAgent, Workflow, WorkflowBuilder
 
+from app.database.repositories import WhatIfMessageRepository
 from app.models import Analysis
 
-from .what_if_executors import (PlanningAgentExecutor, 
+from .what_if_models import WhatIfChatWorkflowInputData
+from .what_if_executors import (ConversationHistoryRetriever, PlanningAgentExecutor, 
                                 FinancialAgentExecutor, 
                                 RiskAgentExecutor, 
                                 MarketAgentExecutor,
@@ -19,17 +22,17 @@ from .what_if_executors import (PlanningAgentExecutor,
 
 logger = logging.getLogger("app.what_if_chat.chat_workflow")
 
+
 class WhatIfChatWorkflow:
     
-    def __init__(self, chat_client: BaseChatClient, thread_id: str | None = None):
+    def __init__(self, chat_client: BaseChatClient):
         self.chat_client = chat_client
-        self.thread_id = thread_id or str(uuid.uuid4()) # Unique thread ID for the conversation
         self.workflow : Workflow | None = None
         
-    async def initialize_workflow(self, analysis_result: Analysis = None):
+    async def initialize_workflow(self):
         logger.info(f"Initializing What-If Chat workflow")
         # Initialization logic here
-        
+
         planner_agent = PlanningAgentExecutor(chat_client=self.chat_client)
         financial_analyst_agent = FinancialAgentExecutor(chat_client=self.chat_client)
         risk_analyst_agent = RiskAgentExecutor(chat_client=self.chat_client)
@@ -45,10 +48,10 @@ class WhatIfChatWorkflow:
             .build()
         )
     
-    async def run_workflow_stream(self, input_messages: ChatMessage | list[ChatMessage]):
+    async def run_workflow_stream(self, input: WhatIfChatWorkflowInputData):
         if self.workflow is None:
             raise ValueError("Workflow not initialized. Call initialize_workflow() first.")
         
         logger.info(f"Running What-If Chat workflow")
-        async for event in self.workflow.run_stream(message=input_messages):
+        async for event in self.workflow.run_stream(message=input):
             yield event
