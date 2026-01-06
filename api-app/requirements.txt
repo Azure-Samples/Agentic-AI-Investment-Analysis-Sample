@@ -17,7 +17,7 @@ agent-framework
 
 # HTTP client
 httpx==0.28.1
-aiohttp==3.12.15
+aiohttp==3.13.3
 
 # Configuration
 pydantic==2.11.7
