@@ -1,7 +1,7 @@
 # FastAPI framework
 fastapi==0.116.1
 uvicorn[standard]==0.35.0
-python-multipart==0.0.20
+python-multipart==0.0.22
 
 # Azure Cosmos DB
 azure-identity==1.23.1
